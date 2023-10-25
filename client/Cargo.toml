@@ -1,0 +1,7 @@
+[package]
+name = "uttt-client"
+version = "0.1.0"
+authors = ["Luis Wirth <lwirth2000@gmail.com>"]
+edition = "2021"
+
+[dependencies]
