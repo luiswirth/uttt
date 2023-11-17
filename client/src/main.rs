@@ -1,10 +1,9 @@
 use common::{
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  GameState, InnerPos, OuterPos, PlayerSymbol,
+  InnerPos, OuterBoard, OuterPos, PlayerSymbol,
 };
 
 use std::net::TcpStream;
-
 use tracing::info;
 
 pub struct Client {
@@ -27,10 +26,7 @@ impl Client {
     let mut stream = TcpStream::connect(&ip_address)?;
     info!("Successfully connected to {}", ip_address);
 
-    let message = receive_message_from_stream(&mut stream)?;
-    let ServerMessage::SymbolAssignment(this_player) = message else {
-      panic!("invalid message received");
-    };
+    let this_player = receive_message_from_stream::<ServerMessage>(&mut stream)?.symbol_assigment();
     let other_player = this_player.other();
     println!("You are {:?}.", this_player);
 
@@ -42,80 +38,69 @@ impl Client {
   }
 
   pub fn play_game(&mut self) -> eyre::Result<()> {
-    let ServerMessage::GameStart(starting_player) = self.receive_message()? else {
-      panic!("invalid message received");
-    };
-    let mut game_state = GameState::new(starting_player);
+    let mut curr_player = self.receive_message()?.game_start();
+    let mut board = OuterBoard::default();
+    let mut curr_inner_board_pos_opt: Option<OuterPos> = None;
 
     println!("Game start!");
-    println!("{:?} begins.", starting_player);
-    loop {
-      if game_state.current_player == self.other_player {
-        println!("Opponents move");
-        let msg = self.receive_message()?;
-        let tile = match msg {
-          ServerMessage::ChooseInnerBoardAccepted(inner_board) => {
-            game_state.current_inner_board = Some(inner_board);
-            println!("InnerBoard {:?} chosen.", inner_board);
-            let ServerMessage::PlaceSymbolAccepted(tile) = self.receive_message()? else {
-              panic!("invalid message received");
-            };
-            tile
-          }
-          ServerMessage::PlaceSymbolAccepted(tile) => tile,
-          _ => panic!("invalid message received"),
-        };
-        game_state.place_symbol(tile, self.other_player);
+    println!("{:?} begins.", curr_player);
 
-        // TODO: check if inner board occupied
-        game_state.current_inner_board = Some(tile.as_outer());
-        game_state.current_player.switch();
-      } else {
+    // main game loop
+    loop {
+      if curr_player == self.this_player {
         println!("Your turn!");
-        if game_state.current_inner_board.is_none() {
+        let &mut curr_inner_board_pos = curr_inner_board_pos_opt.get_or_insert_with(|| {
           println!("Choose InnerBoard (3x3 pos).");
-          let mut inner_board = String::new();
-          std::io::stdin()
-            .read_line(&mut inner_board)
-            .expect("Failed to read line");
-          let mut inner_board = inner_board.split_whitespace();
-          let x = inner_board.next().unwrap().parse().unwrap();
-          let y = inner_board.next().unwrap().parse().unwrap();
-          let inner_board = OuterPos::new(x, y);
-          self.send_message(&ClientMessage::ChooseInnerBoardProposal(inner_board))?;
+          let inner_board_pos = OuterPos(parse_pos());
+          self
+            .send_message(&ClientMessage::ChooseInnerBoardProposal(inner_board_pos))
+            // TODO: handle message error
+            .unwrap();
 
           // TODO: handle rejection
-          let ServerMessage::ChooseInnerBoardAccepted(inner_board_recv) = self.receive_message()?
-          else {
-            panic!("invalid message received");
-          };
-          assert_eq!(inner_board, inner_board_recv);
-          game_state.current_inner_board = Some(inner_board_recv);
-        }
+          let inner_board_pos_recv = self
+            .receive_message()
+            // TODO: handle message error
+            .unwrap()
+            .choose_inner_board_accepted();
+          assert_eq!(inner_board_pos, inner_board_pos_recv);
+          inner_board_pos_recv
+        });
 
         println!("Choose Tile inside InnerBoard (3x3 pos).");
-        let mut tile = String::new();
-        std::io::stdin()
-          .read_line(&mut tile)
-          .expect("failed to read line");
-        let mut tile = tile.split_whitespace();
-        let x = tile.next().unwrap().parse().unwrap();
-        let y = tile.next().unwrap().parse().unwrap();
-        let tile = InnerPos::new(x, y);
-        self.send_message(&ClientMessage::PlaceSymbolProposal(tile))?;
+        let tile_inner_pos = InnerPos(parse_pos());
+        self.send_message(&ClientMessage::PlaceSymbolProposal(tile_inner_pos))?;
 
         // TODO: handle rejection
-        let ServerMessage::PlaceSymbolAccepted(tile_recv) = self.receive_message()? else {
-          panic!("invalid message received");
-        };
-        assert_eq!(tile, tile_recv);
-        game_state.place_symbol(tile_recv, self.this_player);
+        let tile_inner_pos_recv = self.receive_message()?.place_symbol_accepted();
+        assert_eq!(tile_inner_pos, tile_inner_pos_recv);
+        board.place_symbol(
+          (curr_inner_board_pos, tile_inner_pos_recv),
+          self.this_player,
+        );
 
         // TODO: check if inner board occupied
-        game_state.current_inner_board = Some(tile.as_outer());
+        curr_inner_board_pos_opt = Some(tile_inner_pos.as_outer());
+      } else {
+        println!("Opponents move");
+        let &mut curr_inner_board_pos = curr_inner_board_pos_opt.get_or_insert_with(|| {
+          self
+            .receive_message()
+            // TODO: handle message error
+            .unwrap()
+            .choose_inner_board_accepted()
+        });
+        let tile_inner_pos = self.receive_message()?.place_symbol_accepted();
+        board.place_symbol((curr_inner_board_pos, tile_inner_pos), self.other_player);
 
-        game_state.current_player = game_state.current_player.other();
+        let next_inner_board_pos = tile_inner_pos.as_outer();
+        if board.get_inner_board(next_inner_board_pos).state.is_free() {
+          curr_inner_board_pos_opt = Some(next_inner_board_pos);
+        } else {
+          curr_inner_board_pos_opt = None;
+        }
       }
+      curr_player.switch();
     }
   }
 }
@@ -138,4 +123,27 @@ fn main() -> eyre::Result<()> {
   client.play_game()?;
 
   Ok(())
+}
+
+pub fn parse_pos() -> [u8; 2] {
+  loop {
+    let mut inner_board = String::new();
+    if std::io::stdin().read_line(&mut inner_board).is_err() {
+      println!("Failed to read line. Try again.");
+      continue;
+    }
+    match inner_board
+      .split_whitespace()
+      .map(|s| s.parse::<u8>().ok())
+      .map(|op| op.filter(|&x| x < 3))
+      .collect::<Option<Vec<_>>>()
+      .and_then(|v| v.try_into().ok())
+    {
+      Some(pos) => return pos,
+      None => {
+        println!("Invalid input. Try again.");
+        continue;
+      }
+    }
+  }
 }

@@ -1,15 +1,14 @@
 use common::{
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  GameState, PlayerSymbol, PLAYER_SYMBOLS,
+  OuterBoard, OuterPos, PlayerSymbol, PLAYER_SYMBOLS,
 };
 
 use std::net::{TcpListener, TcpStream};
-
 use tracing::{error, info};
 
 pub struct Server {
+  /// sorted according to `PlayerSymbol`
   streams: [TcpStream; 2],
-  game_state: GameState,
 }
 
 impl Server {
@@ -48,42 +47,67 @@ impl Server {
       .try_into()
       .unwrap();
 
-    let starting_player = rand::random();
-    let game_state = GameState::new(starting_player);
-
-    Ok(Self {
-      streams,
-      game_state,
-    })
+    Ok(Self { streams })
   }
 
   fn play_game(&mut self) -> eyre::Result<()> {
-    self.broadcast_message(&ServerMessage::GameStart(self.game_state.current_player))?;
+    let mut board = OuterBoard::default();
+    let mut curr_player: PlayerSymbol = rand::random();
+    let mut curr_inner_board_pos_opt: Option<OuterPos> = None;
 
+    self.broadcast_message(&ServerMessage::GameStart(curr_player))?;
+
+    // main game loop
     loop {
-      if self.game_state.current_inner_board.is_none() {
-        info!("receiving choose innerboard");
-        let ClientMessage::ChooseInnerBoardProposal(inner_board) =
-          self.receive_message(self.game_state.current_player)?
-        else {
-          panic!("invalid message received");
+      let &mut curr_inner_board_pos = curr_inner_board_pos_opt.get_or_insert_with(|| {
+        // choose inner board
+        let inner_board_pos = loop {
+          let inner_board_pos = self
+            .receive_message(curr_player)
+            // TODO: handle message error
+            .unwrap()
+            .choose_inner_board_proposal();
+
+          if board.get_inner_board(inner_board_pos).state.is_free() {
+            break inner_board_pos;
+          } else {
+            self
+              .send_message(&ServerMessage::ChooseInnerBoardRejected, curr_player)
+              // TODO: handle message error
+              .unwrap();
+            continue;
+          }
         };
-        // TODO: verify inner board selection
-        self.broadcast_message(&ServerMessage::ChooseInnerBoardAccepted(inner_board))?;
+        self
+          .broadcast_message(&ServerMessage::ChooseInnerBoardAccepted(inner_board_pos))
+          // TODO: handle message error
+          .unwrap();
+        inner_board_pos
+      });
+
+      let tile_inner_pos = loop {
+        let tile_inner_pos = self.receive_message(curr_player)?.place_symbol_proposal();
+
+        if board.tile((curr_inner_board_pos, tile_inner_pos)).is_none() {
+          break tile_inner_pos;
+        } else {
+          self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
+          continue;
+        }
+      };
+
+      board.place_symbol((curr_inner_board_pos, tile_inner_pos), curr_player);
+      // TODO: check winning conditions
+      self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
+
+      let next_inner_board_pos = tile_inner_pos.as_outer();
+      if board.get_inner_board(next_inner_board_pos).state.is_free() {
+        curr_inner_board_pos_opt = Some(next_inner_board_pos);
+      } else {
+        curr_inner_board_pos_opt = None;
       }
 
-      info!("receiving placesymbol");
-      let ClientMessage::PlaceSymbolProposal(tile) =
-        self.receive_message(self.game_state.current_player)?
-      else {
-        panic!("invalid message received");
-      };
-      // TODO: verify tile selection
-      self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile))?;
-
-      // TODO: check if innerboard occupied
-      self.game_state.current_inner_board = Some(tile.as_outer());
-      self.game_state.current_player = self.game_state.current_player.other();
+      curr_player = curr_player.other();
     }
   }
 }

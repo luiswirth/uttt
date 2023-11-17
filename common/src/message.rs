@@ -1,4 +1,4 @@
-use super::{GameEndType, PlayerSymbol};
+use super::PlayerSymbol;
 use crate::{InnerPos, OuterPos};
 
 use std::{
@@ -10,14 +10,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::trace;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum ClientMessage {
-  ChooseInnerBoardProposal(OuterPos),
-  PlaceSymbolProposal(InnerPos),
-  ForfeitMessage,
-  GameRestartRequest,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub enum ServerMessage {
   SymbolAssignment(PlayerSymbol),
   GameStart(PlayerSymbol),
@@ -25,7 +17,80 @@ pub enum ServerMessage {
   ChooseInnerBoardAccepted(OuterPos),
   PlaceSymbolRejected,
   PlaceSymbolAccepted(InnerPos),
-  GameEndingMessage(GameEndType),
+}
+
+impl ServerMessage {
+  pub fn symbol_assigment(self) -> PlayerSymbol {
+    match self {
+      Self::SymbolAssignment(s) => s,
+      _ => panic!("expected `SymbolAssignment`, got `{:?}`", self),
+    }
+  }
+  pub fn game_start(self) -> PlayerSymbol {
+    match self {
+      Self::GameStart(s) => s,
+      _ => panic!("wong message: expected `GameStart`, got `{:?}`", self),
+    }
+  }
+  pub fn choose_inner_board_rejected(self) {
+    match self {
+      Self::ChooseInnerBoardRejected => (),
+      _ => panic!("expected `ChooseInnerBoardRejected`, got `{:?}`", self),
+    }
+  }
+  pub fn choose_inner_board_accepted(self) -> OuterPos {
+    match self {
+      Self::ChooseInnerBoardAccepted(p) => p,
+      _ => panic!("expected `ChooseInnerBoardAccepted`, got `{:?}`", self),
+    }
+  }
+  pub fn place_symbol_rejected(self) {
+    match self {
+      Self::PlaceSymbolRejected => (),
+      _ => panic!("expected `PlaceSymbolRejected`, got `{:?}`", self),
+    }
+  }
+  pub fn place_symbol_accepted(self) -> InnerPos {
+    match self {
+      Self::PlaceSymbolAccepted(p) => p,
+      _ => panic!("expected `PlaceSymbolAccepted`, got `{:?}`", self),
+    }
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ClientMessage {
+  ChooseInnerBoardProposal(OuterPos),
+  PlaceSymbolProposal(InnerPos),
+  ForfeitMessage,
+  GameRestartRequest,
+}
+
+impl ClientMessage {
+  pub fn choose_inner_board_proposal(self) -> OuterPos {
+    match self {
+      Self::ChooseInnerBoardProposal(p) => p,
+      _ => panic!("expected `ChooseInnerBoardProposal`, got `{:?}`", self),
+    }
+  }
+  pub fn place_symbol_proposal(self) -> InnerPos {
+    match self {
+      Self::PlaceSymbolProposal(p) => p,
+      _ => panic!("expected `PlaceSymbolProposal`, got `{:?}`", self),
+    }
+  }
+  pub fn forfeit_message(self) {
+    match self {
+      Self::ForfeitMessage => (),
+      _ => panic!("expected `ForfeitMessage`, got `{:?}`", self),
+    }
+  }
+  pub fn game_restart_request(self) {
+    match self {
+      Self::GameRestartRequest => (),
+      _ => panic!("expected `GameRestartRequest`, got `{:?}`", self),
+    }
+  }
 }
 
 pub fn send_message_to_stream<Msg: Serialize + std::fmt::Debug>(
