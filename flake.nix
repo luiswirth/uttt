@@ -32,9 +32,7 @@
             bacon
             cargo-edit
           ];
-
         };
-
       }
     );
 }

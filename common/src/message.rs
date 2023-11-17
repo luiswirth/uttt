@@ -1,49 +1,65 @@
-use super::{GameEndType, GameState, PlayerSymbol};
+use super::{GameEndType, PlayerSymbol};
+use crate::{InnerPos, OuterPos};
 
-use serde::Serialize;
+use std::{
+  io::{Read, Write},
+  net::TcpStream,
+};
 
-#[derive(Serialize)]
-pub struct Message {
-  pub full_state: GameState,
-  pub specific: MessageSpecific,
-}
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tracing::trace;
 
-#[derive(Serialize)]
-pub enum MessageSpecific {
-  Client(ClientMessage),
-  Server(ServerMessage),
-}
-
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
-  ConnectionRequest { username: String },
-  GameRestartRequest,
-  TryChooseInnerBoardRequest { pos: [u8; 2] },
-  TryMoveRequest { pos: [u8; 2] },
+  ChooseInnerBoardProposal(OuterPos),
+  PlaceSymbolProposal(InnerPos),
   ForfeitMessage,
+  GameRestartRequest,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ServerMessage {
-  ConnectionResponse {
-    success: bool,
-    username: String,
-    symbol: PlayerSymbol,
-  },
-  GameStartMessage,
-  ChooseInnerBoardMessage,
-  TryChooseInnerBoardResponse {
-    success: bool,
-    pos: [u8; 2],
-  },
-  NewTurnMessage {
-    player: PlayerSymbol,
-    inner_board: [u8; 2],
-  },
-
-  TryMoveResponse {
-    success: bool,
-    pos: [u8; 2],
-  },
+  SymbolAssignment(PlayerSymbol),
+  GameStart(PlayerSymbol),
+  ChooseInnerBoardRejected,
+  ChooseInnerBoardAccepted(OuterPos),
+  PlaceSymbolRejected,
+  PlaceSymbolAccepted(InnerPos),
   GameEndingMessage(GameEndType),
+}
+
+pub fn send_message_to_stream<Msg: Serialize + std::fmt::Debug>(
+  msg: &Msg,
+  stream: &mut TcpStream,
+) -> eyre::Result<()> {
+  let msg_string = ron::to_string(msg)?;
+  let msg_len = msg_string.len() as u64;
+  let msg_len_bytes = msg_len.to_be_bytes();
+  let msg_bytes = msg_string.as_bytes();
+  stream.write_all(&msg_len_bytes)?;
+  stream.write_all(msg_bytes)?;
+  trace!(
+    "Sent message to {}\n{:?}",
+    stream.local_addr().unwrap().ip(),
+    msg
+  );
+  Ok(())
+}
+
+pub fn receive_message_from_stream<Msg: DeserializeOwned + std::fmt::Debug>(
+  stream: &mut TcpStream,
+) -> eyre::Result<Msg> {
+  let mut msg_len_bytes = [0u8; 8];
+  stream.read_exact(&mut msg_len_bytes)?;
+  let msg_len = u64::from_be_bytes(msg_len_bytes) as usize;
+  let mut msg_bytes = vec![0u8; msg_len];
+  stream.read_exact(&mut msg_bytes)?;
+  let msg_string = String::from_utf8(msg_bytes)?;
+  let msg = ron::from_str(&msg_string)?;
+  trace!(
+    "Received message from {}\n{:?}",
+    stream.local_addr().unwrap().ip(),
+    msg
+  );
+  Ok(msg)
 }
