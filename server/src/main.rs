@@ -64,7 +64,6 @@ impl Server {
         let inner_board_pos = loop {
           let inner_board_pos = self
             .receive_message(curr_player)
-            // TODO: handle message error
             .unwrap()
             .choose_inner_board_proposal();
 
@@ -73,14 +72,12 @@ impl Server {
           } else {
             self
               .send_message(&ServerMessage::ChooseInnerBoardRejected, curr_player)
-              // TODO: handle message error
               .unwrap();
             continue;
           }
         };
         self
           .broadcast_message(&ServerMessage::ChooseInnerBoardAccepted(inner_board_pos))
-          // TODO: handle message error
           .unwrap();
         inner_board_pos
       });

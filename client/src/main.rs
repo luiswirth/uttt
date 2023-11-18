@@ -47,17 +47,17 @@ impl Client {
 
     // main game loop
     loop {
+      println!("{}", board);
       let &mut curr_inner_board_pos = curr_inner_board_pos_opt.get_or_insert_with(|| {
         let mut inner_board_pos_sent = None;
         if curr_player == self.this_player {
           println!("Your turn!");
-          println!("Choose InnerBoard (3x3 pos).");
+          println!("Choose InnerBoard.");
           loop {
             let inner_board_pos = OuterPos(parse_position());
             if board.get_inner_board(inner_board_pos).state.is_free() {
               self
                 .send_message(&ClientMessage::ChooseInnerBoardProposal(inner_board_pos))
-                // TODO: handle message error
                 .unwrap();
               inner_board_pos_sent = Some(inner_board_pos);
               break;
@@ -70,21 +70,21 @@ impl Client {
           println!("Opponents turn!");
         }
 
-        // TODO: handle rejection
         let inner_board_pos_recv = self
           .receive_message()
-          // TODO: handle message error
           .unwrap()
           .choose_inner_board_accepted();
         if let Some(inner_board_pos_sent) = inner_board_pos_sent {
           assert_eq!(inner_board_pos_sent, inner_board_pos_recv)
+        } else {
+          println!("Opponent chose InnerBoard {:?}.", inner_board_pos_recv);
         };
         inner_board_pos_recv
       });
 
       let mut tile_inner_pos_sent = None;
       if curr_player == self.this_player {
-        println!("Choose Tile inside InnerBoard (3x3 pos).");
+        println!("Choose Tile inside InnerBoard {:?}.", curr_inner_board_pos);
         loop {
           let tile_inner_pos = InnerPos(parse_position());
           if board.tile((curr_inner_board_pos, tile_inner_pos)).is_none() {
@@ -98,11 +98,15 @@ impl Client {
         }
       }
 
-      // TODO: handle rejection
       let tile_inner_pos_recv = self.receive_message()?.place_symbol_accepted();
       if let Some(tile_inner_pos_sent) = tile_inner_pos_sent {
         assert_eq!(tile_inner_pos_sent, tile_inner_pos_recv)
-      };
+      } else {
+        println!(
+          "Opponent placed symbol at Tile {:?} inside InnerBoard {:?}.",
+          tile_inner_pos_recv, curr_inner_board_pos
+        );
+      }
       board.place_symbol((curr_inner_board_pos, tile_inner_pos_recv), curr_player);
 
       let next_inner_board_pos = tile_inner_pos_recv.as_outer();

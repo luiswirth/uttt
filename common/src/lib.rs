@@ -65,6 +65,31 @@ impl OuterBoard {
   }
 }
 
+impl std::fmt::Display for OuterBoard {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for outer_y in 0..3 {
+      for inner_y in 0..3 {
+        for outer_x in 0..3 {
+          for inner_x in 0..3 {
+            let global_pos = GlobalPos([outer_x * 3 + inner_x, outer_y * 3 + inner_y]);
+            let symbol = self.tile(global_pos);
+            let c = match symbol {
+              Some(PlayerSymbol::Cross) => 'X',
+              Some(PlayerSymbol::Circle) => 'O',
+              None => '*',
+            };
+            write!(f, "{}", c)?;
+          }
+          write!(f, " ")?;
+        }
+        writeln!(f)?;
+      }
+      writeln!(f)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Default, Serialize, Deserialize)]
 pub struct InnerBoard {
   pub state: InnerBoardState,

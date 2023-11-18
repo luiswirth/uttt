@@ -62,8 +62,6 @@ impl ServerMessage {
 pub enum ClientMessage {
   ChooseInnerBoardProposal(OuterPos),
   PlaceSymbolProposal(InnerPos),
-  ForfeitMessage,
-  GameRestartRequest,
 }
 
 impl ClientMessage {
@@ -77,18 +75,6 @@ impl ClientMessage {
     match self {
       Self::PlaceSymbolProposal(p) => p,
       _ => panic!("expected `PlaceSymbolProposal`, got `{:?}`", self),
-    }
-  }
-  pub fn forfeit_message(self) {
-    match self {
-      Self::ForfeitMessage => (),
-      _ => panic!("expected `ForfeitMessage`, got `{:?}`", self),
-    }
-  }
-  pub fn game_restart_request(self) {
-    match self {
-      Self::GameRestartRequest => (),
-      _ => panic!("expected `GameRestartRequest`, got `{:?}`", self),
     }
   }
 }
