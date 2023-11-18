@@ -41,24 +41,17 @@ pub struct OuterBoard {
 }
 
 impl OuterBoard {
-  pub fn get_inner_board(&self, outer_pos: OuterPos) -> &InnerBoard {
+  pub fn inner_board(&self, outer_pos: OuterPos) -> &InnerBoard {
     &self.inners[outer_pos.linear_idx()]
   }
-  pub fn set_inner_board(&mut self, global_pos: impl Into<GlobalPos>, symbol: PlayerSymbol) {
-    let global_pos = global_pos.into();
-    let outer_pos = OuterPos::from(global_pos);
-    let inner_pos = InnerPos::from(global_pos);
-    self.inners[outer_pos.linear_idx()].place_symbol(inner_pos, symbol);
-  }
-
-  pub fn tile(&self, global_pos: impl Into<GlobalPos>) -> Option<PlayerSymbol> {
+  pub fn tile(&self, global_pos: impl Into<GlobalPos>) -> &Tile {
     let global_pos = global_pos.into();
     let outer_pos = OuterPos::from(global_pos);
     let inner_pos = InnerPos::from(global_pos);
     self.inners[outer_pos.linear_idx()].tile(inner_pos)
   }
-  pub fn place_symbol(&mut self, global_pos: impl Into<GlobalPos>, symbol: PlayerSymbol) {
-    let global_pos = global_pos.into();
+  pub fn place_symbol(&mut self, pos: impl Into<GlobalPos>, symbol: PlayerSymbol) {
+    let global_pos = pos.into();
     let outer_pos = OuterPos::from(global_pos);
     let inner_pos = InnerPos::from(global_pos);
     self.inners[outer_pos.linear_idx()].place_symbol(inner_pos, symbol);
@@ -72,7 +65,7 @@ impl std::fmt::Display for OuterBoard {
         for outer_x in 0..3 {
           for inner_x in 0..3 {
             let global_pos = GlobalPos([outer_x * 3 + inner_x, outer_y * 3 + inner_y]);
-            let symbol = self.tile(global_pos);
+            let symbol = self.tile(global_pos).state;
             let c = match symbol {
               Some(PlayerSymbol::Cross) => 'X',
               Some(PlayerSymbol::Circle) => 'O',
@@ -97,11 +90,22 @@ pub struct InnerBoard {
 }
 
 impl InnerBoard {
-  pub fn tile(&self, inner_pos: InnerPos) -> Option<PlayerSymbol> {
-    self.tiles[inner_pos.linear_idx()].state
+  pub fn tile(&self, pos: InnerPos) -> &Tile {
+    &self.tiles[pos.linear_idx()]
   }
-  pub fn place_symbol(&mut self, inner_pos: InnerPos, symbol: PlayerSymbol) {
-    self.tiles[inner_pos.linear_idx()] = Tile::new_occupied(symbol);
+  pub fn tile_mut(&mut self, pos: InnerPos) -> &mut Tile {
+    &mut self.tiles[pos.linear_idx()]
+  }
+
+  pub fn place_symbol(&mut self, pos: InnerPos, symbol: PlayerSymbol) {
+    assert!(self.state.is_free());
+    let tile = self.tile_mut(pos);
+    assert!(tile.is_free());
+    *tile = Tile::new_occupied(symbol);
+  }
+
+  pub fn is_free(&self) -> bool {
+    self.state.is_free()
   }
 }
 
@@ -129,37 +133,57 @@ impl Tile {
       state: Some(symbol),
     }
   }
-
+  pub fn is_free(self) -> bool {
+    self.state.is_none()
+  }
   pub fn is_occupied(self) -> bool {
     self.state.is_some()
   }
 }
 
+/// instance guranteed to be valid
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GlobalPos(pub [u8; 2]);
+pub struct GlobalPos([u8; 2]);
+
+/// instance guranteed to be valid
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OuterPos(pub [u8; 2]);
+pub struct OuterPos([u8; 2]);
+
+/// instance guranteed to be valid
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InnerPos(pub [u8; 2]);
+pub struct InnerPos([u8; 2]);
 
 impl GlobalPos {
+  pub fn new_arr(arr: [u8; 2]) -> Self {
+    assert!(arr[0] < 9 && arr[1] < 9);
+    Self(arr)
+  }
+  pub fn new(x: u8, y: u8) -> Self {
+    Self::new_arr([x, y])
+  }
   pub fn linear_idx(self) -> usize {
     (self.0[0] * 9 + self.0[1]) as usize
   }
 }
 impl OuterPos {
+  pub fn new_arr(arr: [u8; 2]) -> Self {
+    assert!(arr[0] < 3 && arr[1] < 3);
+    Self(arr)
+  }
   pub fn new(x: u8, y: u8) -> Self {
-    assert!(x < 3 && y < 3);
-    Self([x, y])
+    Self::new_arr([x, y])
   }
   pub fn linear_idx(self) -> usize {
     (self.0[0] * 3 + self.0[1]) as usize
   }
 }
 impl InnerPos {
+  pub fn new_arr(arr: [u8; 2]) -> Self {
+    assert!(arr[0] < 3 && arr[1] < 3);
+    Self(arr)
+  }
   pub fn new(x: u8, y: u8) -> Self {
-    assert!(x < 3 && y < 3);
-    Self([x, y])
+    Self::new_arr([x, y])
   }
   pub fn linear_idx(self) -> usize {
     (self.0[0] * 3 + self.0[1]) as usize

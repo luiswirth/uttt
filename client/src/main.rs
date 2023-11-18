@@ -54,8 +54,8 @@ impl Client {
           println!("Your turn!");
           println!("Choose InnerBoard.");
           loop {
-            let inner_board_pos = OuterPos(parse_position());
-            if board.get_inner_board(inner_board_pos).state.is_free() {
+            let inner_board_pos = OuterPos::new_arr(parse_position());
+            if board.inner_board(inner_board_pos).is_free() {
               self
                 .send_message(&ClientMessage::ChooseInnerBoardProposal(inner_board_pos))
                 .unwrap();
@@ -86,8 +86,8 @@ impl Client {
       if curr_player == self.this_player {
         println!("Choose Tile inside InnerBoard {:?}.", curr_inner_board_pos);
         loop {
-          let tile_inner_pos = InnerPos(parse_position());
-          if board.tile((curr_inner_board_pos, tile_inner_pos)).is_none() {
+          let tile_inner_pos = InnerPos::new_arr(parse_position());
+          if board.tile((curr_inner_board_pos, tile_inner_pos)).is_free() {
             self.send_message(&ClientMessage::PlaceSymbolProposal(tile_inner_pos))?;
             tile_inner_pos_sent = Some(tile_inner_pos);
             break;
@@ -110,7 +110,7 @@ impl Client {
       board.place_symbol((curr_inner_board_pos, tile_inner_pos_recv), curr_player);
 
       let next_inner_board_pos = tile_inner_pos_recv.as_outer();
-      if board.get_inner_board(next_inner_board_pos).state.is_free() {
+      if board.inner_board(next_inner_board_pos).is_free() {
         curr_inner_board_pos_opt = Some(next_inner_board_pos);
       } else {
         curr_inner_board_pos_opt = None;

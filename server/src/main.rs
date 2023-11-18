@@ -67,7 +67,7 @@ impl Server {
             .unwrap()
             .choose_inner_board_proposal();
 
-          if board.get_inner_board(inner_board_pos).state.is_free() {
+          if board.inner_board(inner_board_pos).is_free() {
             break inner_board_pos;
           } else {
             self
@@ -85,7 +85,7 @@ impl Server {
       let tile_inner_pos = loop {
         let tile_inner_pos = self.receive_message(curr_player)?.place_symbol_proposal();
 
-        if board.tile((curr_inner_board_pos, tile_inner_pos)).is_none() {
+        if board.tile((curr_inner_board_pos, tile_inner_pos)).is_free() {
           break tile_inner_pos;
         } else {
           self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
@@ -98,7 +98,7 @@ impl Server {
       self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
 
       let next_inner_board_pos = tile_inner_pos.as_outer();
-      if board.get_inner_board(next_inner_board_pos).state.is_free() {
+      if board.inner_board(next_inner_board_pos).is_free() {
         curr_inner_board_pos_opt = Some(next_inner_board_pos);
       } else {
         curr_inner_board_pos_opt = None;
@@ -110,12 +110,16 @@ impl Server {
 }
 
 impl Server {
+  pub fn stream_mut(&mut self, player: PlayerSymbol) -> &mut TcpStream {
+    &mut self.streams[player.to_idx()]
+  }
+
   pub fn send_message(
     &mut self,
     message: &ServerMessage,
     player: PlayerSymbol,
   ) -> eyre::Result<()> {
-    send_message_to_stream(message, &mut self.streams[player.to_idx()])?;
+    send_message_to_stream(message, self.stream_mut(player))?;
     Ok(())
   }
 
@@ -127,7 +131,7 @@ impl Server {
   }
 
   pub fn receive_message(&mut self, player: PlayerSymbol) -> eyre::Result<ClientMessage> {
-    receive_message_from_stream(&mut self.streams[player.to_idx()])
+    receive_message_from_stream(self.stream_mut(player))
   }
 }
 
