@@ -1,5 +1,7 @@
-use super::PlayerSymbol;
-use crate::{InnerPos, OuterPos};
+use crate::{
+  pos::{InnerPos, OuterPos},
+  PlayerSymbol,
+};
 
 use std::{
   io::{Read, Write},

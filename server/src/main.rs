@@ -1,6 +1,8 @@
 use common::{
+  board::OuterBoard,
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  OuterBoard, OuterPos, PlayerSymbol, PLAYER_SYMBOLS,
+  pos::OuterPos,
+  PlayerSymbol, PLAYER_SYMBOLS,
 };
 
 use std::net::{TcpListener, TcpStream};
