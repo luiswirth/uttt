@@ -13,6 +13,12 @@ pub enum PlayerSymbol {
   Circle = 1,
 }
 
+impl std::fmt::Display for PlayerSymbol {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.char())
+  }
+}
+
 impl PlayerSymbol {
   pub fn to_idx(self) -> usize {
     self as usize
@@ -28,6 +34,13 @@ impl PlayerSymbol {
   }
   pub fn switch(&mut self) {
     *self = self.other();
+  }
+
+  pub fn char(self) -> char {
+    match self {
+      PlayerSymbol::Cross => 'X',
+      PlayerSymbol::Circle => 'O',
+    }
   }
 }
 

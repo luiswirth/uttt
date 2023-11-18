@@ -49,11 +49,15 @@ impl Client {
 
     // main game loop
     loop {
+      if curr_player == self.this_player {
+        println!("Your ({:?}) turn!", curr_player);
+      } else {
+        println!("Opponents ({:?}) turn!", curr_player);
+      }
       println!("{}", board);
       let &mut curr_inner_board_pos = curr_inner_board_pos_opt.get_or_insert_with(|| {
         let mut inner_board_pos_sent = None;
         if curr_player == self.this_player {
-          println!("Your turn!");
           println!("Choose InnerBoard.");
           loop {
             let inner_board_pos = OuterPos::new_arr(parse_position());
@@ -68,8 +72,6 @@ impl Client {
               continue;
             }
           }
-        } else {
-          println!("Opponents turn!");
         }
 
         let inner_board_pos_recv = self

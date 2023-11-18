@@ -12,8 +12,15 @@ impl OuterPos {
   pub fn new(x: u8, y: u8) -> Self {
     Self::new_arr([x, y])
   }
+
+  pub fn x(self) -> u8 {
+    self.0[0]
+  }
+  pub fn y(self) -> u8 {
+    self.0[1]
+  }
   pub fn linear_idx(self) -> usize {
-    (self.0[0] * 3 + self.0[1]) as usize
+    (self.x() * 3 + self.y()) as usize
   }
 }
 
@@ -36,10 +43,10 @@ impl InnerPos {
   pub fn y(self) -> u8 {
     self.0[1]
   }
-
   pub fn linear_idx(self) -> usize {
-    (self.0[0] * 3 + self.0[1]) as usize
+    (self.x() * 3 + self.y()) as usize
   }
+
   pub fn as_outer(self) -> OuterPos {
     OuterPos(self.0)
   }
@@ -58,8 +65,48 @@ impl LocalPos {
   pub fn new(x: u8, y: u8) -> Self {
     Self::new_arr([x, y])
   }
+
+  pub fn x(self) -> u8 {
+    self.0[0]
+  }
+  pub fn y(self) -> u8 {
+    self.0[1]
+  }
   pub fn linear_idx(self) -> usize {
-    (self.0[0] * 3 + self.0[1]) as usize
+    (self.x() * 3 + self.y()) as usize
+  }
+
+  pub fn as_outer(self) -> OuterPos {
+    OuterPos(self.0)
+  }
+  pub fn as_inner(self) -> InnerPos {
+    InnerPos(self.0)
+  }
+
+  pub fn is_main_diagonal(self) -> bool {
+    self.x() == self.y()
+  }
+  pub fn is_anti_diagonal(self) -> bool {
+    self.x() + self.y() == 2
+  }
+
+  // TODO: consider moving these methods outside of this struct
+
+  pub fn x_axis(self) -> impl Iterator<Item = Self> {
+    (0..3).map(move |y| Self::new(self.x(), y))
+  }
+  pub fn y_axis(self) -> impl Iterator<Item = Self> {
+    (0..3).map(move |x| Self::new(x, self.y()))
+  }
+  pub fn main_diagonal(self) -> Option<impl Iterator<Item = Self>> {
+    self
+      .is_main_diagonal()
+      .then(|| (0..3).map(move |i| Self::new(i, i)))
+  }
+  pub fn anti_diagonal(self) -> Option<impl Iterator<Item = Self>> {
+    self
+      .is_anti_diagonal()
+      .then(|| (0..3).map(move |i| Self::new(i, 2 - i)))
   }
 }
 
@@ -86,8 +133,15 @@ impl GlobalPos {
   pub fn new(x: u8, y: u8) -> Self {
     Self::new_arr([x, y])
   }
+
+  pub fn x(self) -> u8 {
+    self.0[0]
+  }
+  pub fn y(self) -> u8 {
+    self.0[1]
+  }
   pub fn linear_idx(self) -> usize {
-    (self.0[0] * 9 + self.0[1]) as usize
+    (self.x() * 9 + self.y()) as usize
   }
 }
 
