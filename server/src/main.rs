@@ -99,16 +99,28 @@ impl Server {
       board.place_symbol((curr_inner_board_pos, tile_inner_pos), curr_player);
       self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
 
-      if let MetaTileBoardState::OccupiedWon(winner) = board.inner_board(curr_inner_board_pos).state
-      {
-        assert_eq!(winner, curr_player);
-        info!("{:?} won InnerBoard {:?}.", winner, curr_inner_board_pos);
+      match board.inner_board(curr_inner_board_pos).state {
+        MetaTileBoardState::FreeUndecided => {}
+        MetaTileBoardState::UnoccupiableDraw => {
+          info!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
+        }
+        MetaTileBoardState::OccupiedWon(winner) => {
+          assert_eq!(winner, curr_player);
+          info!("{:?} won InnerBoard {:?}.", winner, curr_inner_board_pos);
+        }
       }
 
-      if let MetaTileBoardState::OccupiedWon(winner) = board.state {
-        assert_eq!(winner, curr_player);
-        info!("{:?} won the game.", winner);
-        break Ok(());
+      match board.state {
+        MetaTileBoardState::FreeUndecided => {}
+        MetaTileBoardState::UnoccupiableDraw => {
+          info!("The game ended in a draw.");
+          break Ok(());
+        }
+        MetaTileBoardState::OccupiedWon(winner) => {
+          assert_eq!(winner, curr_player);
+          info!("{:?} won the game.", winner);
+          break Ok(());
+        }
       }
 
       let next_inner_board_pos = tile_inner_pos.as_outer();

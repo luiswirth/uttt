@@ -114,24 +114,36 @@ impl Client {
       }
       board.place_symbol((curr_inner_board_pos, tile_inner_pos_recv), curr_player);
 
-      if let MetaTileBoardState::OccupiedWon(winner) = board.inner_board(curr_inner_board_pos).state
-      {
-        let player_str = if winner == self.this_player {
-          "You"
-        } else {
-          "Opponent"
-        };
-        println!("{} won InnerBoard {:?}!", player_str, curr_inner_board_pos);
+      match board.inner_board(curr_inner_board_pos).state {
+        MetaTileBoardState::FreeUndecided => {}
+        MetaTileBoardState::UnoccupiableDraw => {
+          println!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
+        }
+        MetaTileBoardState::OccupiedWon(winner) => {
+          let player_str = if winner == self.this_player {
+            "You"
+          } else {
+            "Opponent"
+          };
+          println!("{} won InnerBoard {:?}!", player_str, curr_inner_board_pos);
+        }
       }
 
-      if let MetaTileBoardState::OccupiedWon(winner) = board.state {
-        let player_str = if winner == self.this_player {
-          "You"
-        } else {
-          "Opponent"
-        };
-        println!("{} won the game!", player_str);
-        break Ok(());
+      match board.state {
+        MetaTileBoardState::FreeUndecided => {}
+        MetaTileBoardState::UnoccupiableDraw => {
+          println!("The game ended in a draw.");
+          break Ok(());
+        }
+        MetaTileBoardState::OccupiedWon(winner) => {
+          let player_str = if winner == self.this_player {
+            "You"
+          } else {
+            "Opponent"
+          };
+          println!("{} won the game!", player_str);
+          break Ok(());
+        }
       }
 
       let next_inner_board_pos = tile_inner_pos_recv.as_outer();

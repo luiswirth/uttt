@@ -1,5 +1,5 @@
 use crate::{
-  pos::{GlobalPos, InnerPos, LocalPos, OuterPos},
+  pos::{GlobalPos, InnerPos, LineIter, LocalPos, OuterPos},
   PlayerSymbol,
 };
 
@@ -96,13 +96,20 @@ impl MetaTileBoardState {
   pub fn is_free(self) -> bool {
     matches!(self, Self::FreeUndecided)
   }
+  pub fn is_occupied_won(self) -> bool {
+    matches!(self, Self::OccupiedWon(_))
+  }
+  pub fn is_unoccupiable_draw(self) -> bool {
+    matches!(self, Self::UnoccupiableDraw)
+  }
 
-  // TODO: find better name
-  /// combinator
-  pub fn merge(self, other: Self) -> Self {
+  /// combinator used to compute the state of a whole line
+  pub fn merge_line(self, other: Self) -> Self {
     match [self, other] {
-      [Self::FreeUndecided, Self::FreeUndecided] => Self::FreeUndecided,
       [Self::OccupiedWon(s1), Self::OccupiedWon(s2)] if s1 == s2 => Self::OccupiedWon(s1),
+      [Self::FreeUndecided, Self::FreeUndecided] => Self::FreeUndecided,
+      [Self::OccupiedWon(_), Self::FreeUndecided] => Self::FreeUndecided,
+      [Self::FreeUndecided, Self::OccupiedWon(_)] => Self::FreeUndecided,
       _ => Self::UnoccupiableDraw,
     }
   }
@@ -143,48 +150,25 @@ trait MetaTileBoard {
   /// <Self as Board>: winning state of the board
   fn sub_state(&self, pos: LocalPos) -> MetaTileBoardState;
 
+  fn compute_line_state(&self, line: LineIter) -> MetaTileBoardState {
+    line
+      .map(|pos| self.sub_state(pos))
+      .reduce(|a, b| a.merge_line(b))
+      .unwrap()
+  }
+
   /// computes the super state, based on the change of a sub state
   /// <Self as Board>: compute winning state of the board
   fn compute_super_state(&self, new_sub_state_pos: Self::ConcreteLocalPos) -> MetaTileBoardState {
-    // TODO: also consider unoccupiable/unwinnable
     let new_tile_pos = new_sub_state_pos.into();
 
-    if let MetaTileBoardState::OccupiedWon(winner) = new_tile_pos
-      .x_axis()
-      .map(|pos| self.sub_state(pos))
-      .reduce(|a, b| a.merge(b))
-      .unwrap()
-    {
-      return MetaTileBoardState::OccupiedWon(winner);
-    }
-
-    if let MetaTileBoardState::OccupiedWon(winner) = new_tile_pos
-      .y_axis()
-      .map(|pos| self.sub_state(pos))
-      .reduce(|a, b| a.merge(b))
-      .unwrap()
-    {
-      return MetaTileBoardState::OccupiedWon(winner);
-    }
-
-    if let Some(main_diagonal) = new_tile_pos.main_diagonal() {
-      if let MetaTileBoardState::OccupiedWon(winner) = main_diagonal
-        .map(|pos| self.sub_state(pos))
-        .reduce(|a, b| a.merge(b))
-        .unwrap()
-      {
-        return MetaTileBoardState::OccupiedWon(winner);
+    for line in new_tile_pos.lines() {
+      let line_state = self.compute_line_state(line);
+      if line_state.is_occupied_won() {
+        return line_state;
       }
     }
-    if let Some(anti_diagonal) = new_tile_pos.anti_diagonal() {
-      if let MetaTileBoardState::OccupiedWon(winner) = anti_diagonal
-        .map(|pos| self.sub_state(pos))
-        .reduce(|a, b| a.merge(b))
-        .unwrap()
-      {
-        return MetaTileBoardState::OccupiedWon(winner);
-      }
-    }
+
     MetaTileBoardState::FreeUndecided
   }
 }
