@@ -1,5 +1,3 @@
-use tracing::info;
-
 use crate::{
   pos::{GlobalPos, InnerPos, LocalPos, OuterPos},
   PlayerSymbol,
@@ -7,6 +5,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct OuterBoard {
+  pub state: MetaTileBoardState,
   pub inners: [InnerBoard; 9],
 }
 
@@ -25,11 +24,8 @@ impl OuterBoard {
     let outer_pos = OuterPos::from(global_pos);
     let inner_pos = InnerPos::from(global_pos);
 
-    // TODO: check winning condition in outterboard
-    let inner_board_state = self.inners[outer_pos.linear_idx()].place_symbol(inner_pos, symbol);
-    if let InnerBoardState::Occupied(winner) = inner_board_state {
-      info!("InnerBoard {:?} won by {:?}.", outer_pos, winner);
-    }
+    self.inners[outer_pos.linear_idx()].place_symbol(inner_pos, symbol);
+    self.state = self.compute_super_state(outer_pos);
   }
 }
 
@@ -41,12 +37,9 @@ impl std::fmt::Display for OuterBoard {
           for inner_x in 0..3 {
             let global_pos = GlobalPos::new(outer_x * 3 + inner_x, outer_y * 3 + inner_y);
             let c = match self.inner_board(global_pos.into()).state {
-              InnerBoardState::Free => match self.tile(global_pos).0 {
-                Some(sym) => sym.char(),
-                None => '*',
-              },
-              InnerBoardState::Occupied(sym) => sym.char(),
-              InnerBoardState::Drawn => '#',
+              MetaTileBoardState::FreeUndecided => self.tile(global_pos).char(),
+              MetaTileBoardState::OccupiedWon(sym) => sym.char(),
+              MetaTileBoardState::UnoccupiableDraw => '#',
             };
             write!(f, "{}", c)?;
           }
@@ -62,7 +55,7 @@ impl std::fmt::Display for OuterBoard {
 
 #[derive(Default)]
 pub struct InnerBoard {
-  pub state: InnerBoardState,
+  pub state: MetaTileBoardState,
   pub tiles: [TileState; 9],
 }
 
@@ -75,83 +68,54 @@ impl InnerBoard {
   }
 
   // returns (potentially new) state of the inner board
-  pub fn place_symbol(&mut self, pos: InnerPos, symbol: PlayerSymbol) -> InnerBoardState {
+  pub fn place_symbol(&mut self, pos: InnerPos, symbol: PlayerSymbol) {
     assert!(self.state.is_free());
     let tile = self.tile_mut(pos);
     assert!(tile.is_free());
     *tile = TileState::new_occupied(symbol);
-    self.update_state(pos)
+    self.state = self.compute_super_state(pos);
   }
 
   pub fn is_free(&self) -> bool {
     self.state.is_free()
   }
-
-  // called by place_symbol
-  fn update_state(&mut self, new_tile_pos: InnerPos) -> InnerBoardState {
-    if let TileState(Some(winner)) = LocalPos::from(new_tile_pos)
-      .x_axis()
-      .map(|pos| *self.tile(pos.as_inner()))
-      .reduce(|a, b| a.merge_same(b))
-      .unwrap()
-    {
-      self.state = InnerBoardState::Occupied(winner);
-      return self.state;
-    }
-
-    if let TileState(Some(winner)) = LocalPos::from(new_tile_pos)
-      .y_axis()
-      .map(|pos| *self.tile(pos.as_inner()))
-      .reduce(|a, b| a.merge_same(b))
-      .unwrap()
-    {
-      self.state = InnerBoardState::Occupied(winner);
-      return self.state;
-    }
-
-    if let Some(main_diagonal) = LocalPos::from(new_tile_pos).main_diagonal() {
-      if let TileState(Some(winner)) = main_diagonal
-        .map(|pos| *self.tile(pos.as_inner()))
-        .reduce(|a, b| a.merge_same(b))
-        .unwrap()
-      {
-        self.state = InnerBoardState::Occupied(winner);
-        return self.state;
-      }
-    }
-    if let Some(anti_diagonal) = LocalPos::from(new_tile_pos).anti_diagonal() {
-      if let TileState(Some(winner)) = anti_diagonal
-        .map(|pos| *self.tile(pos.as_inner()))
-        .reduce(|a, b| a.merge_same(b))
-        .unwrap()
-      {
-        self.state = InnerBoardState::Occupied(winner);
-        return self.state;
-      }
-    }
-    self.state
-  }
 }
 
-// TODO: consider replacing `Free` by wrapping this as `Option<InnerBoadState>`
+/// A `MetaTileBoardState` is a state inside the tile/board hierarchy.
+/// It can be seen as both a tile state and a board state,
+/// depending on what level of the hierarchy you are considering.
 #[derive(Debug, Clone, Copy, Default)]
-pub enum InnerBoardState {
+pub enum MetaTileBoardState {
   #[default]
-  Free,
-  Occupied(PlayerSymbol),
-  Drawn,
+  FreeUndecided,
+  OccupiedWon(PlayerSymbol),
+  UnoccupiableDraw,
 }
 
-impl InnerBoardState {
+impl MetaTileBoardState {
   pub fn is_free(self) -> bool {
-    matches!(self, Self::Free)
+    matches!(self, Self::FreeUndecided)
+  }
+
+  // TODO: find better name
+  /// combinator
+  pub fn merge(self, other: Self) -> Self {
+    match [self, other] {
+      [Self::FreeUndecided, Self::FreeUndecided] => Self::FreeUndecided,
+      [Self::OccupiedWon(s1), Self::OccupiedWon(s2)] if s1 == s2 => Self::OccupiedWon(s1),
+      _ => Self::UnoccupiableDraw,
+    }
   }
 }
 
+/// trivial tile state at the bottom of the tile/board hierarchy
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TileState(pub Option<PlayerSymbol>);
 
 impl TileState {
+  pub fn new_free() -> Self {
+    Self(None)
+  }
   pub fn new_occupied(symbol: PlayerSymbol) -> Self {
     Self(Some(symbol))
   }
@@ -161,10 +125,85 @@ impl TileState {
   pub fn is_occupied(self) -> bool {
     self.0.is_some()
   }
-  pub fn merge_same(self, other: Self) -> Self {
-    match (self.0, other.0) {
-      (Some(a), Some(b)) if a == b => Self(Some(a)),
-      _ => Self(None),
+
+  pub fn char(self) -> char {
+    match self.0 {
+      Some(s) => s.char(),
+      None => '*',
     }
+  }
+}
+
+/// this is both a board and a tile
+trait MetaTileBoard {
+  /// viewed as board: position type of a tile
+  type ConcreteLocalPos: Into<LocalPos>;
+
+  /// <Self as Tile>: occupancy state of the tile
+  /// <Self as Board>: winning state of the board
+  fn sub_state(&self, pos: LocalPos) -> MetaTileBoardState;
+
+  /// computes the super state, based on the change of a sub state
+  /// <Self as Board>: compute winning state of the board
+  fn compute_super_state(&self, new_sub_state_pos: Self::ConcreteLocalPos) -> MetaTileBoardState {
+    // TODO: also consider unoccupiable/unwinnable
+    let new_tile_pos = new_sub_state_pos.into();
+
+    if let MetaTileBoardState::OccupiedWon(winner) = new_tile_pos
+      .x_axis()
+      .map(|pos| self.sub_state(pos))
+      .reduce(|a, b| a.merge(b))
+      .unwrap()
+    {
+      return MetaTileBoardState::OccupiedWon(winner);
+    }
+
+    if let MetaTileBoardState::OccupiedWon(winner) = new_tile_pos
+      .y_axis()
+      .map(|pos| self.sub_state(pos))
+      .reduce(|a, b| a.merge(b))
+      .unwrap()
+    {
+      return MetaTileBoardState::OccupiedWon(winner);
+    }
+
+    if let Some(main_diagonal) = new_tile_pos.main_diagonal() {
+      if let MetaTileBoardState::OccupiedWon(winner) = main_diagonal
+        .map(|pos| self.sub_state(pos))
+        .reduce(|a, b| a.merge(b))
+        .unwrap()
+      {
+        return MetaTileBoardState::OccupiedWon(winner);
+      }
+    }
+    if let Some(anti_diagonal) = new_tile_pos.anti_diagonal() {
+      if let MetaTileBoardState::OccupiedWon(winner) = anti_diagonal
+        .map(|pos| self.sub_state(pos))
+        .reduce(|a, b| a.merge(b))
+        .unwrap()
+      {
+        return MetaTileBoardState::OccupiedWon(winner);
+      }
+    }
+    MetaTileBoardState::FreeUndecided
+  }
+}
+
+impl MetaTileBoard for InnerBoard {
+  type ConcreteLocalPos = InnerPos;
+
+  /// the sub state here is the trivial tile state
+  fn sub_state(&self, pos: LocalPos) -> MetaTileBoardState {
+    match self.tile(pos.as_inner()) {
+      TileState(Some(s)) => MetaTileBoardState::OccupiedWon(*s),
+      TileState(None) => MetaTileBoardState::FreeUndecided,
+    }
+  }
+}
+
+impl MetaTileBoard for OuterBoard {
+  type ConcreteLocalPos = OuterPos;
+  fn sub_state(&self, pos: LocalPos) -> MetaTileBoardState {
+    self.inner_board(pos.as_outer()).state
   }
 }

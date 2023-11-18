@@ -1,5 +1,5 @@
 use common::{
-  board::OuterBoard,
+  board::{MetaTileBoardState, OuterBoard},
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   pos::{InnerPos, OuterPos},
   PlayerSymbol,
@@ -49,12 +49,13 @@ impl Client {
 
     // main game loop
     loop {
+      println!("---------------------");
+      println!("{}", board);
       if curr_player == self.this_player {
         println!("Your ({:?}) turn!", curr_player);
       } else {
         println!("Opponents ({:?}) turn!", curr_player);
       }
-      println!("{}", board);
       let &mut curr_inner_board_pos = curr_inner_board_pos_opt.get_or_insert_with(|| {
         let mut inner_board_pos_sent = None;
         if curr_player == self.this_player {
@@ -113,6 +114,26 @@ impl Client {
       }
       board.place_symbol((curr_inner_board_pos, tile_inner_pos_recv), curr_player);
 
+      if let MetaTileBoardState::OccupiedWon(winner) = board.inner_board(curr_inner_board_pos).state
+      {
+        let player_str = if winner == self.this_player {
+          "You"
+        } else {
+          "Opponent"
+        };
+        println!("{} won InnerBoard {:?}!", player_str, curr_inner_board_pos);
+      }
+
+      if let MetaTileBoardState::OccupiedWon(winner) = board.state {
+        let player_str = if winner == self.this_player {
+          "You"
+        } else {
+          "Opponent"
+        };
+        println!("{} won the game!", player_str);
+        break Ok(());
+      }
+
       let next_inner_board_pos = tile_inner_pos_recv.as_outer();
       if board.inner_board(next_inner_board_pos).is_free() {
         curr_inner_board_pos_opt = Some(next_inner_board_pos);
@@ -140,9 +161,9 @@ fn main() -> eyre::Result<()> {
     .init();
 
   let mut client = Client::new()?;
-  client.play_game()?;
-
-  Ok(())
+  loop {
+    client.play_game()?;
+  }
 }
 
 pub fn parse_position() -> [u8; 2] {

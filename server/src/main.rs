@@ -1,5 +1,5 @@
 use common::{
-  board::OuterBoard,
+  board::{MetaTileBoardState, OuterBoard},
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   pos::OuterPos,
   PlayerSymbol, PLAYER_SYMBOLS,
@@ -57,6 +57,7 @@ impl Server {
     let mut curr_player: PlayerSymbol = rand::random();
     let mut curr_inner_board_pos_opt: Option<OuterPos> = None;
 
+    tracing::info!("New game started.");
     self.broadcast_message(&ServerMessage::GameStart(curr_player))?;
 
     // main game loop
@@ -96,8 +97,19 @@ impl Server {
       };
 
       board.place_symbol((curr_inner_board_pos, tile_inner_pos), curr_player);
-      // TODO: check winning conditions
       self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
+
+      if let MetaTileBoardState::OccupiedWon(winner) = board.inner_board(curr_inner_board_pos).state
+      {
+        assert_eq!(winner, curr_player);
+        info!("{:?} won InnerBoard {:?}.", winner, curr_inner_board_pos);
+      }
+
+      if let MetaTileBoardState::OccupiedWon(winner) = board.state {
+        assert_eq!(winner, curr_player);
+        info!("{:?} won the game.", winner);
+        break Ok(());
+      }
 
       let next_inner_board_pos = tile_inner_pos.as_outer();
       if board.inner_board(next_inner_board_pos).is_free() {
@@ -143,7 +155,7 @@ fn main() -> eyre::Result<()> {
     .init();
 
   let mut server = Server::new()?;
-  server.play_game()?;
-
-  Ok(())
+  loop {
+    server.play_game()?;
+  }
 }
