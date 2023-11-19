@@ -1,10 +1,12 @@
 pub mod board;
+pub mod line;
 pub mod message;
 pub mod pos;
 
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
+pub const LOCAL_BOARD_SIZE: u8 = 3;
 pub const PLAYER_SYMBOLS: [PlayerSymbol; 2] = [PlayerSymbol::Cross, PlayerSymbol::Circle];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

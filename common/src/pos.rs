@@ -122,24 +122,6 @@ impl LocalPos {
   pub fn as_inner(self) -> InnerPos {
     InnerPos(self.0)
   }
-
-  pub fn is_on_main_diagonal(self) -> bool {
-    self.x() == self.y()
-  }
-  pub fn is_on_anti_diagonal(self) -> bool {
-    self.x() + self.y() == 2
-  }
-
-  pub fn lines(self) -> impl Iterator<Item = LineIter> {
-    let mut l = vec![LineIter::x_axis(self.y()), LineIter::y_axis(self.x())];
-    if self.is_on_main_diagonal() {
-      l.push(LineIter::main_diagonal());
-    }
-    if self.is_on_anti_diagonal() {
-      l.push(LineIter::anti_diagonal());
-    }
-    l.into_iter()
-  }
 }
 
 impl From<OuterPos> for LocalPos {
@@ -150,62 +132,5 @@ impl From<OuterPos> for LocalPos {
 impl From<InnerPos> for LocalPos {
   fn from(inner: InnerPos) -> Self {
     Self(inner.0)
-  }
-}
-
-enum LineType {
-  XAxis(u8),
-  YAxis(u8),
-  MainDiagonal,
-  AntiDiagonal,
-}
-
-pub struct LineIter {
-  line_type: LineType,
-  i: u8,
-}
-impl LineIter {
-  pub fn x_axis(y: u8) -> Self {
-    assert!(y < 3);
-    Self {
-      line_type: LineType::XAxis(y),
-      i: 0,
-    }
-  }
-  pub fn y_axis(x: u8) -> Self {
-    assert!(x < 3);
-    Self {
-      line_type: LineType::YAxis(x),
-      i: 0,
-    }
-  }
-  pub fn main_diagonal() -> Self {
-    Self {
-      line_type: LineType::MainDiagonal,
-      i: 0,
-    }
-  }
-  pub fn anti_diagonal() -> Self {
-    Self {
-      line_type: LineType::AntiDiagonal,
-      i: 0,
-    }
-  }
-}
-impl Iterator for LineIter {
-  type Item = LocalPos;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    if self.i >= 3 {
-      return None;
-    }
-    let i = self.i;
-    self.i += 1;
-    Some(match self.line_type {
-      LineType::XAxis(y) => LocalPos::new(i, y),
-      LineType::YAxis(x) => LocalPos::new(x, i),
-      LineType::MainDiagonal => LocalPos::new(i, i),
-      LineType::AntiDiagonal => LocalPos::new(i, 2 - i),
-    })
   }
 }

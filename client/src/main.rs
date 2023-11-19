@@ -92,7 +92,10 @@ impl Client {
         println!("Choose Tile inside InnerBoard {:?}.", curr_inner_board_pos);
         loop {
           let tile_inner_pos = InnerPos::new_arr(parse_position());
-          if board.tile((curr_inner_board_pos, tile_inner_pos)).is_free() {
+          if board
+            .trivial_tile((curr_inner_board_pos, tile_inner_pos))
+            .is_free()
+          {
             self.send_message(&ClientMessage::PlaceSymbolProposal(tile_inner_pos))?;
             tile_inner_pos_sent = Some(tile_inner_pos);
             break;
@@ -114,7 +117,7 @@ impl Client {
       }
       board.place_symbol((curr_inner_board_pos, tile_inner_pos_recv), curr_player);
 
-      match board.inner_board(curr_inner_board_pos).state {
+      match board.inner_board(curr_inner_board_pos).board_state() {
         MetaTileBoardState::FreeUndecided => {}
         MetaTileBoardState::UnoccupiableDraw => {
           println!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
@@ -129,13 +132,14 @@ impl Client {
         }
       }
 
-      match board.state {
+      match board.board_state() {
         MetaTileBoardState::FreeUndecided => {}
         MetaTileBoardState::UnoccupiableDraw => {
           println!("The game ended in a draw.");
           break Ok(());
         }
         MetaTileBoardState::OccupiedWon(winner) => {
+          println!("{}", board);
           let player_str = if winner == self.this_player {
             "You"
           } else {

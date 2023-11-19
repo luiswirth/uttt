@@ -88,7 +88,10 @@ impl Server {
       let tile_inner_pos = loop {
         let tile_inner_pos = self.receive_message(curr_player)?.place_symbol_proposal();
 
-        if board.tile((curr_inner_board_pos, tile_inner_pos)).is_free() {
+        if board
+          .trivial_tile((curr_inner_board_pos, tile_inner_pos))
+          .is_free()
+        {
           break tile_inner_pos;
         } else {
           self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
@@ -99,7 +102,7 @@ impl Server {
       board.place_symbol((curr_inner_board_pos, tile_inner_pos), curr_player);
       self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
 
-      match board.inner_board(curr_inner_board_pos).state {
+      match board.inner_board(curr_inner_board_pos).board_state() {
         MetaTileBoardState::FreeUndecided => {}
         MetaTileBoardState::UnoccupiableDraw => {
           info!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
@@ -110,7 +113,7 @@ impl Server {
         }
       }
 
-      match board.state {
+      match board.board_state() {
         MetaTileBoardState::FreeUndecided => {}
         MetaTileBoardState::UnoccupiableDraw => {
           info!("The game ended in a draw.");
