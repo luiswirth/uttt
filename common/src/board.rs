@@ -1,12 +1,12 @@
-pub(crate) mod generic;
+pub mod generic;
 pub mod specific;
 
-pub(crate) use generic::*;
+pub use generic::*;
 pub use specific::*;
 
 use crate::PlayerSymbol;
 
-/// A `GenericTileBoardState` is a state inside the tile/board hierarchy.
+/// A `GenericTileBoardState` is a state inside the board hierarchy.
 /// It can be seen as both a tile state and a board state,
 /// depending on what level of the hierarchy you are considering.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -40,11 +40,11 @@ impl GenericTileBoardState {
   }
 }
 
-/// trivial tile state at the bottom of the tile/board hierarchy
+/// Trivial tile state at the bottom of the board hierarchy.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct TrivialTileState(pub Option<PlayerSymbol>);
+pub struct TrivialTile(pub Option<PlayerSymbol>);
 
-impl TrivialTileState {
+impl TrivialTile {
   pub fn new_free() -> Self {
     Self(None)
   }
@@ -56,5 +56,14 @@ impl TrivialTileState {
   }
   pub fn is_occupied(self) -> bool {
     self.0.is_some()
+  }
+}
+
+impl From<TrivialTile> for GenericTileBoardState {
+  fn from(tile: TrivialTile) -> Self {
+    match tile {
+      TrivialTile(None) => Self::FreeUndecided,
+      TrivialTile(Some(symbol)) => Self::OccupiedWon(symbol),
+    }
   }
 }

@@ -1,5 +1,5 @@
 use common::{
-  board::{GenericTileBoardState, OuterBoard},
+  board::{BoardTrait, GenericTileBoardState, OuterBoard},
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   pos::{GlobalPos, InnerPos, OuterPos},
   PlayerSymbol,
@@ -41,7 +41,7 @@ impl Client {
 
   pub fn play_game(&mut self) -> eyre::Result<()> {
     let mut curr_player = self.receive_message()?.game_start();
-    let mut board = OuterBoard::default();
+    let mut outer_board = OuterBoard::default();
     let mut curr_inner_board_pos_opt: Option<OuterPos> = None;
 
     println!("Game start!");
@@ -50,7 +50,7 @@ impl Client {
     // main game loop
     loop {
       println!("---------------------");
-      print_outer_board(&board);
+      print_outer_board(&outer_board);
       if curr_player == self.this_player {
         println!("Your ({:?}) turn!", curr_player);
       } else {
@@ -62,7 +62,7 @@ impl Client {
           println!("Choose InnerBoard.");
           loop {
             let inner_board_pos = OuterPos::new_arr(parse_position());
-            if board.inner_board(inner_board_pos).is_free() {
+            if outer_board.tile(inner_board_pos).is_free() {
               self
                 .send_message(&ClientMessage::ChooseInnerBoardProposal(inner_board_pos))
                 .unwrap();
@@ -92,8 +92,8 @@ impl Client {
         println!("Choose Tile inside InnerBoard {:?}.", curr_inner_board_pos);
         loop {
           let tile_inner_pos = InnerPos::new_arr(parse_position());
-          if board
-            .trivial_tile((curr_inner_board_pos, tile_inner_pos))
+          if outer_board
+            .trivial_tile(GlobalPos::from((curr_inner_board_pos, tile_inner_pos)))
             .is_free()
           {
             self.send_message(&ClientMessage::PlaceSymbolProposal(tile_inner_pos))?;
@@ -115,9 +115,12 @@ impl Client {
           tile_inner_pos_recv, curr_inner_board_pos
         );
       }
-      board.place_symbol((curr_inner_board_pos, tile_inner_pos_recv), curr_player);
+      outer_board.place_symbol(
+        GlobalPos::from((curr_inner_board_pos, tile_inner_pos_recv)),
+        curr_player,
+      );
 
-      match board.inner_board(curr_inner_board_pos).board_state() {
+      match outer_board.tile(curr_inner_board_pos).board_state() {
         GenericTileBoardState::FreeUndecided => {}
         GenericTileBoardState::UnoccupiableDraw => {
           println!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
@@ -132,14 +135,14 @@ impl Client {
         }
       }
 
-      match board.board_state() {
+      match outer_board.board_state() {
         GenericTileBoardState::FreeUndecided => {}
         GenericTileBoardState::UnoccupiableDraw => {
           println!("The game ended in a draw.");
           break Ok(());
         }
         GenericTileBoardState::OccupiedWon(winner) => {
-          print_outer_board(&board);
+          print_outer_board(&outer_board);
           let player_str = if winner == self.this_player {
             "You"
           } else {
@@ -151,7 +154,7 @@ impl Client {
       }
 
       let next_inner_board_pos = tile_inner_pos_recv.as_outer();
-      if board.inner_board(next_inner_board_pos).is_free() {
+      if outer_board.tile(next_inner_board_pos).is_free() {
         curr_inner_board_pos_opt = Some(next_inner_board_pos);
       } else {
         curr_inner_board_pos_opt = None;
@@ -183,6 +186,9 @@ fn main() -> eyre::Result<()> {
 }
 
 pub fn parse_position() -> [u8; 2] {
+  // quick and dirty random position
+  //let t = std::time::Instant::now().elapsed().as_nanos();
+  //return [(t % 3) as u8, (t / 10 % 3) as u8];
   loop {
     let mut inner_board = String::new();
     if std::io::stdin().read_line(&mut inner_board).is_err() {
@@ -213,9 +219,9 @@ fn print_outer_board(board: &OuterBoard) {
           let global_pos = GlobalPos::new(outer_x * 3 + inner_x, outer_y * 3 + inner_y);
           let outer_pos = OuterPos::from(global_pos);
           let inner_pos = InnerPos::from(global_pos);
-          let inner_board = board.inner_board(outer_pos);
+          let inner_board = board.tile(outer_pos);
           let c = match inner_board.board_state() {
-            GenericTileBoardState::FreeUndecided => match inner_board.trivial_tile(inner_pos).0 {
+            GenericTileBoardState::FreeUndecided => match inner_board.tile(inner_pos).0 {
               Some(sym) => match sym {
                 PlayerSymbol::Cross => 'X',
                 PlayerSymbol::Circle => 'O',

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::GenericPos;
+
 /// instance guranteed to be valid
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct GlobalPos([u8; 2]);
@@ -11,6 +13,35 @@ impl GlobalPos {
   }
   pub fn new(x: u8, y: u8) -> Self {
     Self::new_arr([x, y])
+  }
+}
+
+impl IntoIterator for GlobalPos {
+  type Item = GenericPos;
+  type IntoIter = GlobalPosIter;
+  fn into_iter(self) -> Self::IntoIter {
+    GlobalPosIter { global: self, i: 0 }
+  }
+}
+
+pub struct GlobalPosIter {
+  global: GlobalPos,
+  i: u8,
+}
+impl Iterator for GlobalPosIter {
+  type Item = GenericPos;
+  fn next(&mut self) -> Option<Self::Item> {
+    match self.i {
+      0 => {
+        self.i = 1;
+        Some(OuterPos::from(self.global).into())
+      }
+      1 => {
+        self.i = 2;
+        Some(InnerPos::from(self.global).into())
+      }
+      _ => None,
+    }
   }
 }
 

@@ -1,7 +1,7 @@
 use common::{
-  board::{GenericTileBoardState, OuterBoard},
+  board::{BoardTrait, GenericTileBoardState, OuterBoard},
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  pos::OuterPos,
+  pos::{GlobalPos, OuterPos},
   PlayerSymbol, PLAYER_SYMBOLS,
 };
 
@@ -53,7 +53,7 @@ impl Server {
   }
 
   fn play_game(&mut self) -> eyre::Result<()> {
-    let mut board = OuterBoard::default();
+    let mut outer_board = OuterBoard::default();
     let mut curr_player: PlayerSymbol = rand::random();
     let mut curr_inner_board_pos_opt: Option<OuterPos> = None;
 
@@ -70,7 +70,7 @@ impl Server {
             .unwrap()
             .choose_inner_board_proposal();
 
-          if board.inner_board(inner_board_pos).is_free() {
+          if outer_board.tile(inner_board_pos).is_free() {
             break inner_board_pos;
           } else {
             self
@@ -88,8 +88,8 @@ impl Server {
       let tile_inner_pos = loop {
         let tile_inner_pos = self.receive_message(curr_player)?.place_symbol_proposal();
 
-        if board
-          .trivial_tile((curr_inner_board_pos, tile_inner_pos))
+        if outer_board
+          .trivial_tile(GlobalPos::from((curr_inner_board_pos, tile_inner_pos)))
           .is_free()
         {
           break tile_inner_pos;
@@ -99,10 +99,13 @@ impl Server {
         }
       };
 
-      board.place_symbol((curr_inner_board_pos, tile_inner_pos), curr_player);
+      outer_board.place_symbol(
+        GlobalPos::from((curr_inner_board_pos, tile_inner_pos)),
+        curr_player,
+      );
       self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
 
-      match board.inner_board(curr_inner_board_pos).board_state() {
+      match outer_board.tile(curr_inner_board_pos).board_state() {
         GenericTileBoardState::FreeUndecided => {}
         GenericTileBoardState::UnoccupiableDraw => {
           info!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
@@ -113,7 +116,7 @@ impl Server {
         }
       }
 
-      match board.board_state() {
+      match outer_board.board_state() {
         GenericTileBoardState::FreeUndecided => {}
         GenericTileBoardState::UnoccupiableDraw => {
           info!("The game ended in a draw.");
@@ -127,7 +130,7 @@ impl Server {
       }
 
       let next_inner_board_pos = tile_inner_pos.as_outer();
-      if board.inner_board(next_inner_board_pos).is_free() {
+      if outer_board.tile(next_inner_board_pos).is_free() {
         curr_inner_board_pos_opt = Some(next_inner_board_pos);
       } else {
         curr_inner_board_pos_opt = None;
