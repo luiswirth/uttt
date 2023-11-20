@@ -10,7 +10,6 @@ pub struct GenericBoard<TileType> {
   line_states: [GenericTileBoardState; 8],
 }
 
-/// public interface
 impl<TileType> GenericBoard<TileType> {
   pub fn tile(&self, pos: impl Into<GenericPos>) -> &TileType {
     let pos = pos.into();
@@ -22,7 +21,6 @@ impl<TileType> GenericBoard<TileType> {
   }
 }
 
-/// private interface
 impl<TileType> GenericBoard<TileType> {
   fn tile_mut(&mut self, pos: GenericPos) -> &mut TileType {
     &mut self.tiles[pos.linear_idx()]
@@ -35,32 +33,12 @@ impl<TileType> GenericBoard<TileType> {
   }
 }
 
-impl GenericBoard<TrivialTile> {
+impl<TileType: TileTrait> GenericBoard<TileType> {
   fn update_super_states(&mut self, local_pos: GenericPos) {
     for line in Line::all_through_point(local_pos) {
       let line_state = line
         .iter()
-        .map(|pos| GenericTileBoardState::from(*self.tile(pos)))
-        .reduce(|a, b| a.line_combinator(b))
-        .unwrap();
-
-      *self.line_state_mut(line) = line_state;
-      if line_state.is_occupied_won() {
-        self.board_state = line_state;
-      }
-    }
-    if Line::all().all(|line| self.line_state(line).is_unoccupiable_draw()) {
-      self.board_state = GenericTileBoardState::UnoccupiableDraw;
-    }
-  }
-}
-
-impl<Innerboard: BoardTrait> GenericBoard<Innerboard> {
-  fn update_super_states(&mut self, local_pos: GenericPos) {
-    for line in Line::all_through_point(local_pos) {
-      let line_state = line
-        .iter()
-        .map(|pos| self.tile(pos).board_state())
+        .map(|pos| self.tile(pos).tile_state())
         .reduce(|a, b| a.line_combinator(b))
         .unwrap();
 
@@ -139,5 +117,19 @@ impl<InnerBoard: BoardTrait> BoardTrait for GenericBoard<InnerBoard> {
     self.tile_mut(local_pos).place_symbol(pos_iter, symbol);
 
     self.update_super_states(local_pos);
+  }
+}
+
+pub trait TileTrait {
+  fn tile_state(&self) -> GenericTileBoardState;
+}
+impl TileTrait for TrivialTile {
+  fn tile_state(&self) -> GenericTileBoardState {
+    (*self).into()
+  }
+}
+impl<BoardType: BoardTrait> TileTrait for BoardType {
+  fn tile_state(&self) -> GenericTileBoardState {
+    self.board_state()
   }
 }
