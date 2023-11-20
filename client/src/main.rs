@@ -1,7 +1,7 @@
 use common::{
-  board::{MetaTileBoardState, OuterBoard},
+  board::{GenericTileBoardState, OuterBoard},
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  pos::{InnerPos, OuterPos},
+  pos::{GlobalPos, InnerPos, OuterPos},
   PlayerSymbol,
 };
 
@@ -50,7 +50,7 @@ impl Client {
     // main game loop
     loop {
       println!("---------------------");
-      println!("{}", board);
+      print_outer_board(&board);
       if curr_player == self.this_player {
         println!("Your ({:?}) turn!", curr_player);
       } else {
@@ -118,11 +118,11 @@ impl Client {
       board.place_symbol((curr_inner_board_pos, tile_inner_pos_recv), curr_player);
 
       match board.inner_board(curr_inner_board_pos).board_state() {
-        MetaTileBoardState::FreeUndecided => {}
-        MetaTileBoardState::UnoccupiableDraw => {
+        GenericTileBoardState::FreeUndecided => {}
+        GenericTileBoardState::UnoccupiableDraw => {
           println!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
         }
-        MetaTileBoardState::OccupiedWon(winner) => {
+        GenericTileBoardState::OccupiedWon(winner) => {
           let player_str = if winner == self.this_player {
             "You"
           } else {
@@ -133,13 +133,13 @@ impl Client {
       }
 
       match board.board_state() {
-        MetaTileBoardState::FreeUndecided => {}
-        MetaTileBoardState::UnoccupiableDraw => {
+        GenericTileBoardState::FreeUndecided => {}
+        GenericTileBoardState::UnoccupiableDraw => {
           println!("The game ended in a draw.");
           break Ok(());
         }
-        MetaTileBoardState::OccupiedWon(winner) => {
-          println!("{}", board);
+        GenericTileBoardState::OccupiedWon(winner) => {
+          print_outer_board(&board);
           let player_str = if winner == self.this_player {
             "You"
           } else {
@@ -202,5 +202,38 @@ pub fn parse_position() -> [u8; 2] {
         continue;
       }
     }
+  }
+}
+
+fn print_outer_board(board: &OuterBoard) {
+  for outer_y in 0..3 {
+    for inner_y in 0..3 {
+      for outer_x in 0..3 {
+        for inner_x in 0..3 {
+          let global_pos = GlobalPos::new(outer_x * 3 + inner_x, outer_y * 3 + inner_y);
+          let outer_pos = OuterPos::from(global_pos);
+          let inner_pos = InnerPos::from(global_pos);
+          let inner_board = board.inner_board(outer_pos);
+          let c = match inner_board.board_state() {
+            GenericTileBoardState::FreeUndecided => match inner_board.trivial_tile(inner_pos).0 {
+              Some(sym) => match sym {
+                PlayerSymbol::Cross => 'X',
+                PlayerSymbol::Circle => 'O',
+              },
+              None => '.',
+            },
+            GenericTileBoardState::OccupiedWon(sym) => match sym {
+              PlayerSymbol::Cross => 'X',
+              PlayerSymbol::Circle => 'O',
+            },
+            GenericTileBoardState::UnoccupiableDraw => '#',
+          };
+          print!("{}", c);
+        }
+        print!(" ");
+      }
+      println!();
+    }
+    println!();
   }
 }

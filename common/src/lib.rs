@@ -1,7 +1,8 @@
 pub mod board;
-pub mod line;
 pub mod message;
 pub mod pos;
+
+pub(crate) mod line;
 
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -30,13 +31,6 @@ impl PlayerSymbol {
   }
   pub fn switch(&mut self) {
     *self = self.other();
-  }
-
-  pub fn char(self) -> char {
-    match self {
-      PlayerSymbol::Cross => 'X',
-      PlayerSymbol::Circle => 'O',
-    }
   }
 }
 

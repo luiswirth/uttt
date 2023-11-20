@@ -1,5 +1,5 @@
 use common::{
-  board::{MetaTileBoardState, OuterBoard},
+  board::{GenericTileBoardState, OuterBoard},
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   pos::OuterPos,
   PlayerSymbol, PLAYER_SYMBOLS,
@@ -103,23 +103,23 @@ impl Server {
       self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
 
       match board.inner_board(curr_inner_board_pos).board_state() {
-        MetaTileBoardState::FreeUndecided => {}
-        MetaTileBoardState::UnoccupiableDraw => {
+        GenericTileBoardState::FreeUndecided => {}
+        GenericTileBoardState::UnoccupiableDraw => {
           info!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
         }
-        MetaTileBoardState::OccupiedWon(winner) => {
+        GenericTileBoardState::OccupiedWon(winner) => {
           assert_eq!(winner, curr_player);
           info!("{:?} won InnerBoard {:?}.", winner, curr_inner_board_pos);
         }
       }
 
       match board.board_state() {
-        MetaTileBoardState::FreeUndecided => {}
-        MetaTileBoardState::UnoccupiableDraw => {
+        GenericTileBoardState::FreeUndecided => {}
+        GenericTileBoardState::UnoccupiableDraw => {
           info!("The game ended in a draw.");
           break Ok(());
         }
-        MetaTileBoardState::OccupiedWon(winner) => {
+        GenericTileBoardState::OccupiedWon(winner) => {
           assert_eq!(winner, curr_player);
           info!("{:?} won the game.", winner);
           break Ok(());
