@@ -1,7 +1,4 @@
-use crate::{
-  pos::{InnerPos, OuterPos},
-  PlayerSymbol,
-};
+use crate::PlayerSymbol;
 
 use std::{
   io::{Read, Write},
@@ -10,6 +7,8 @@ use std::{
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::trace;
+
+use super::pos::{InnerPos, OuterPos};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerMessage {

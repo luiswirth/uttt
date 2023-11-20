@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::GenericPos;
+use crate::generic::pos::GenericPos;
 
 /// instance guranteed to be valid
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -75,6 +75,12 @@ impl OuterPos {
   }
 }
 
+impl From<OuterPos> for GenericPos {
+  fn from(outer: OuterPos) -> Self {
+    Self::new_arr(outer.0)
+  }
+}
+
 /// instance guranteed to be valid
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InnerPos(pub(super) [u8; 2]);
@@ -89,5 +95,11 @@ impl InnerPos {
   }
   pub fn as_outer(self) -> OuterPos {
     OuterPos(self.0)
+  }
+}
+
+impl From<InnerPos> for GenericPos {
+  fn from(inner: InnerPos) -> Self {
+    Self::new_arr(inner.0)
   }
 }

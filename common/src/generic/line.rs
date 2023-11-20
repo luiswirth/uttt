@@ -1,4 +1,6 @@
-use crate::{pos::GenericPos, LOCAL_BOARD_SIZE};
+use crate::LOCAL_BOARD_SIZE;
+
+use super::pos::GenericPos;
 
 const NLINES: usize = 2 * LOCAL_BOARD_SIZE as usize + 2;
 

@@ -1,5 +1,3 @@
-use super::specific::{InnerPos, OuterPos};
-
 /// Generic local positions inside board hierarchy.
 ///
 /// Instance guranteed to be valid.
@@ -23,16 +21,5 @@ impl GenericPos {
   }
   pub fn linear_idx(self) -> usize {
     (self.x() * 3 + self.y()) as usize
-  }
-}
-
-impl From<OuterPos> for GenericPos {
-  fn from(outer: OuterPos) -> Self {
-    Self(outer.0)
-  }
-}
-impl From<InnerPos> for GenericPos {
-  fn from(inner: InnerPos) -> Self {
-    Self(inner.0)
   }
 }

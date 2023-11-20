@@ -1,8 +1,5 @@
-pub mod board;
-pub mod message;
-pub mod pos;
-
-pub(crate) mod line;
+pub mod generic;
+pub mod specific;
 
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};

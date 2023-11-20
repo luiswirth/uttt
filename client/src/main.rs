@@ -1,7 +1,10 @@
 use common::{
-  board::{BoardTrait, GenericTileBoardState, OuterBoard},
-  message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  pos::{GlobalPos, InnerPos, OuterPos},
+  generic::board::GenericTileBoardState,
+  specific::{
+    board::OuterBoard,
+    message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
+    pos::{GlobalPos, InnerPos, OuterPos},
+  },
   PlayerSymbol,
 };
 
