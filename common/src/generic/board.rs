@@ -182,7 +182,7 @@ impl GenericTileBoardState {
   }
 }
 
-/// Trivial tile state at the bottom of the board hierarchy.
+/// `TrivialTile` is the bottom of the tile hierarchy.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TrivialTile(pub Option<PlayerSymbol>);
 

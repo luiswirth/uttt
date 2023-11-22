@@ -1,7 +1,7 @@
 use common::{
   generic::board::GenericTileBoardState,
   specific::{
-    board::OuterBoard,
+    board::{InnerBoard, OuterBoard},
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
     pos::{GlobalPos, InnerPos, OuterPos},
   },
@@ -10,6 +10,8 @@ use common::{
 
 use std::net::TcpStream;
 use tracing::info;
+
+const RANDOM_MOVES: bool = false;
 
 pub struct Client {
   stream: TcpStream,
@@ -64,7 +66,11 @@ impl Client {
         if curr_player == self.this_player {
           println!("Choose InnerBoard.");
           loop {
-            let inner_board_pos = OuterPos::new_arr(parse_position());
+            let inner_board_pos = if RANDOM_MOVES {
+              random_outer_pos(&outer_board)
+            } else {
+              OuterPos::new_arr(parse_position())
+            };
             if outer_board.tile(inner_board_pos).is_free() {
               self
                 .send_message(&ClientMessage::ChooseInnerBoardProposal(inner_board_pos))
@@ -94,7 +100,11 @@ impl Client {
       if curr_player == self.this_player {
         println!("Choose Tile inside InnerBoard {:?}.", curr_inner_board_pos);
         loop {
-          let tile_inner_pos = InnerPos::new_arr(parse_position());
+          let tile_inner_pos = if RANDOM_MOVES {
+            random_inner_pos(outer_board.tile(curr_inner_board_pos))
+          } else {
+            InnerPos::new_arr(parse_position())
+          };
           if outer_board
             .trivial_tile(GlobalPos::from((curr_inner_board_pos, tile_inner_pos)))
             .is_free()
@@ -188,10 +198,29 @@ fn main() -> eyre::Result<()> {
   }
 }
 
+pub fn random_outer_pos(outer_board: &OuterBoard) -> OuterPos {
+  loop {
+    let t = std::time::Instant::now().elapsed().as_nanos();
+    let pos = [(t % 3) as u8, (t / 10 % 3) as u8];
+    let pos = OuterPos::new_arr(pos);
+    if outer_board.tile(pos).is_free() {
+      return pos;
+    }
+  }
+}
+
+pub fn random_inner_pos(inner_board: &InnerBoard) -> InnerPos {
+  loop {
+    let t = std::time::Instant::now().elapsed().as_nanos();
+    let pos = [(t % 3) as u8, (t / 10 % 3) as u8];
+    let pos = InnerPos::new_arr(pos);
+    if inner_board.tile(pos).is_free() {
+      return pos;
+    }
+  }
+}
+
 pub fn parse_position() -> [u8; 2] {
-  // quick and dirty random position
-  //let t = std::time::Instant::now().elapsed().as_nanos();
-  //return [(t % 3) as u8, (t / 10 % 3) as u8];
   loop {
     let mut inner_board = String::new();
     if std::io::stdin().read_line(&mut inner_board).is_err() {
