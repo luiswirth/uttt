@@ -14,3 +14,8 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 eyre = "0.6.9"
 color-eyre = "0.6.2"
+
+[dependencies.eframe]
+version = "0.23.0"
+default-features = false
+features = ["x11", "wayland", "wgpu", "accesskit", "default_fonts"]

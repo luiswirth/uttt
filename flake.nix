@@ -24,14 +24,29 @@
       {
         formatter = nixpkgs-fmt;
 
-        devShell = mkShell {
+        devShell = mkShell rec {
           buildInputs = [
             pkg-config
             rust-toolchain
             rust-analyzer
             bacon
             cargo-edit
+
+            udev
+            libxkbcommon
+            vulkan-loader
+            vulkan-validation-layers
+
+            # wayland
+            wayland
+
+            # X11
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXi
+            xorg.libXrandr
           ];
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath(buildInputs);
         };
       }
     );
