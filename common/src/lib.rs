@@ -4,21 +4,22 @@ pub mod specific;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
+pub const NPLAYERS: u8 = 2;
 pub const LOCAL_BOARD_SIZE: u8 = 3;
-pub const PLAYER_SYMBOLS: [PlayerSymbol; 2] = [PlayerSymbol::Cross, PlayerSymbol::Circle];
+pub const PLAYERS: [Player; 2] = [Player::Cross, Player::Circle];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum PlayerSymbol {
+pub enum Player {
   Cross = 0,
   Circle = 1,
 }
 
-impl PlayerSymbol {
-  pub fn to_idx(self) -> usize {
+impl Player {
+  pub fn idx(self) -> usize {
     self as usize
   }
   pub fn from_idx(idx: usize) -> Self {
-    PLAYER_SYMBOLS[idx]
+    PLAYERS[idx]
   }
   pub fn other(self) -> Self {
     match self {
@@ -31,8 +32,8 @@ impl PlayerSymbol {
   }
 }
 
-impl Distribution<PlayerSymbol> for rand::distributions::Standard {
-  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PlayerSymbol {
-    PlayerSymbol::from_idx(rng.gen_range(0..2))
+impl Distribution<Player> for rand::distributions::Standard {
+  fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Player {
+    Player::from_idx(rng.gen_range(0..2))
   }
 }

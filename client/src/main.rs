@@ -1,11 +1,11 @@
 use common::{
-  generic::board::GenericTileBoardState,
+  generic::board::{TileBoardState, TrivialTile},
   specific::{
     board::{InnerBoard, OuterBoard},
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
     pos::{GlobalPos, InnerPos, OuterPos},
   },
-  PlayerSymbol,
+  Player,
 };
 
 use std::net::TcpStream;
@@ -15,8 +15,8 @@ const RANDOM_MOVES: bool = false;
 
 pub struct Client {
   stream: TcpStream,
-  this_player: PlayerSymbol,
-  _other_player: PlayerSymbol,
+  this_player: Player,
+  _other_player: Player,
 }
 
 impl Client {
@@ -134,11 +134,11 @@ impl Client {
       );
 
       match outer_board.tile(curr_inner_board_pos).board_state() {
-        GenericTileBoardState::FreeUndecided => {}
-        GenericTileBoardState::UnoccupiableDraw => {
+        TileBoardState::Free => {}
+        TileBoardState::Drawn => {
           println!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
         }
-        GenericTileBoardState::OccupiedWon(winner) => {
+        TileBoardState::Won(winner) => {
           let player_str = if winner == self.this_player {
             "You"
           } else {
@@ -149,12 +149,12 @@ impl Client {
       }
 
       match outer_board.board_state() {
-        GenericTileBoardState::FreeUndecided => {}
-        GenericTileBoardState::UnoccupiableDraw => {
+        TileBoardState::Free => {}
+        TileBoardState::Drawn => {
           println!("The game ended in a draw.");
           break Ok(());
         }
-        GenericTileBoardState::OccupiedWon(winner) => {
+        TileBoardState::Won(winner) => {
           print_outer_board(&outer_board);
           let player_str = if winner == self.this_player {
             "You"
@@ -253,18 +253,16 @@ fn print_outer_board(board: &OuterBoard) {
           let inner_pos = InnerPos::from(global_pos);
           let inner_board = board.tile(outer_pos);
           let c = match inner_board.board_state() {
-            GenericTileBoardState::FreeUndecided => match inner_board.tile(inner_pos).0 {
-              Some(sym) => match sym {
-                PlayerSymbol::Cross => 'X',
-                PlayerSymbol::Circle => 'O',
-              },
-              None => '.',
+            TileBoardState::Free => match inner_board.tile(inner_pos) {
+              TrivialTile::Free => '.',
+              TrivialTile::Won(Player::Cross) => 'X',
+              TrivialTile::Won(Player::Circle) => 'O',
             },
-            GenericTileBoardState::OccupiedWon(sym) => match sym {
-              PlayerSymbol::Cross => 'X',
-              PlayerSymbol::Circle => 'O',
+            TileBoardState::Won(sym) => match sym {
+              Player::Cross => 'X',
+              Player::Circle => 'O',
             },
-            GenericTileBoardState::UnoccupiableDraw => '#',
+            TileBoardState::Drawn => '#',
           };
           print!("{}", c);
         }

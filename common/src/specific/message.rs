@@ -1,4 +1,4 @@
-use crate::PlayerSymbol;
+use crate::Player;
 
 use std::{
   io::{Read, Write},
@@ -12,8 +12,8 @@ use super::pos::{InnerPos, OuterPos};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerMessage {
-  SymbolAssignment(PlayerSymbol),
-  GameStart(PlayerSymbol),
+  SymbolAssignment(Player),
+  GameStart(Player),
   ChooseInnerBoardRejected,
   ChooseInnerBoardAccepted(OuterPos),
   PlaceSymbolRejected,
@@ -21,13 +21,13 @@ pub enum ServerMessage {
 }
 
 impl ServerMessage {
-  pub fn symbol_assigment(self) -> PlayerSymbol {
+  pub fn symbol_assigment(self) -> Player {
     match self {
       Self::SymbolAssignment(s) => s,
       _ => panic!("expected `SymbolAssignment`, got `{:?}`", self),
     }
   }
-  pub fn game_start(self) -> PlayerSymbol {
+  pub fn game_start(self) -> Player {
     match self {
       Self::GameStart(s) => s,
       _ => panic!("wong message: expected `GameStart`, got `{:?}`", self),

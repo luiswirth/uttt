@@ -1,6 +1,6 @@
-use crate::LOCAL_BOARD_SIZE;
+use crate::{Player, LOCAL_BOARD_SIZE};
 
-use super::pos::GenericPos;
+use super::{board::TileBoardState, pos::Pos};
 
 const NLINES: usize = 2 * LOCAL_BOARD_SIZE as usize + 2;
 
@@ -57,7 +57,7 @@ impl Line {
     }
   }
 
-  pub(crate) fn all_through_point(pos: GenericPos) -> impl Iterator<Item = Self> {
+  pub(crate) fn all_through_point(pos: Pos) -> impl Iterator<Item = Self> {
     let mut l = vec![Self::x_axis(pos.y()), Self::y_axis(pos.x())];
     if pos.x() == pos.y() {
       l.push(Self::MainDiagonal);
@@ -78,7 +78,7 @@ pub(crate) struct LineIter {
   i: u8,
 }
 impl Iterator for LineIter {
-  type Item = GenericPos;
+  type Item = Pos;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.i >= 3 {
@@ -87,10 +87,55 @@ impl Iterator for LineIter {
     let i = self.i;
     self.i += 1;
     Some(match self.line_type {
-      Line::XAxis(y) => GenericPos::new(i, y),
-      Line::YAxis(x) => GenericPos::new(x, i),
-      Line::MainDiagonal => GenericPos::new(i, i),
-      Line::AntiDiagonal => GenericPos::new(i, 2 - i),
+      Line::XAxis(y) => Pos::new(i, y),
+      Line::YAxis(x) => Pos::new(x, i),
+      Line::MainDiagonal => Pos::new(i, i),
+      Line::AntiDiagonal => Pos::new(i, 2 - i),
     })
+  }
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub enum LineState {
+  #[default]
+  Free,
+  PartiallyWon(Player, u8),
+  Won(Player),
+  Drawn,
+}
+
+impl LineState {
+  pub fn is_drawn(self) -> bool {
+    matches!(self, Self::Drawn)
+  }
+
+  /// combinator used to compute the state of a whole line
+  pub fn combinator(self, other: Self) -> Self {
+    match [self, other] {
+      [Self::PartiallyWon(p0, n0), Self::PartiallyWon(p1, n1)] if p0 == p1 => {
+        let n = n0 + n1;
+        debug_assert!(n <= LOCAL_BOARD_SIZE);
+        if n == LOCAL_BOARD_SIZE {
+          Self::Won(p0)
+        } else {
+          Self::PartiallyWon(p0, n)
+        }
+      }
+      [s @ Self::PartiallyWon(..), Self::Free] => s,
+      [Self::Free, s @ Self::PartiallyWon(..)] => s,
+      [Self::Free, Self::Free] => Self::Free,
+      [Self::Won(_), _] | [_, Self::Won(_)] => panic!("a winning line should never be combined"),
+      _ => Self::Drawn,
+    }
+  }
+}
+
+impl From<TileBoardState> for LineState {
+  fn from(t: TileBoardState) -> Self {
+    match t {
+      TileBoardState::Free => Self::Free,
+      TileBoardState::Won(p) => Self::PartiallyWon(p, 1),
+      TileBoardState::Drawn => Self::Drawn,
+    }
   }
 }

@@ -1,18 +1,18 @@
 use common::{
-  generic::board::GenericTileBoardState,
+  generic::board::TileBoardState,
   specific::{
     board::OuterBoard,
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
     pos::{GlobalPos, OuterPos},
   },
-  PlayerSymbol, PLAYER_SYMBOLS,
+  Player, PLAYERS,
 };
 
 use std::net::{TcpListener, TcpStream};
 use tracing::{error, info};
 
 pub struct Server {
-  /// sorted according to `PlayerSymbol`
+  /// sorted according to `Player`
   streams: [TcpStream; 2],
 }
 
@@ -20,8 +20,8 @@ impl Server {
   pub fn new() -> eyre::Result<Self> {
     let listener = TcpListener::bind("localhost:42069")?;
 
-    let mut curr_symbol: PlayerSymbol = rand::random();
-    let mut streams: Vec<(PlayerSymbol, TcpStream)> = listener
+    let mut curr_player: Player = rand::random();
+    let mut streams: Vec<(Player, TcpStream)> = listener
       .incoming()
       .filter_map(|stream| match stream {
         Ok(s) => Some(s),
@@ -33,13 +33,13 @@ impl Server {
       .take(2)
       .enumerate()
       .map(|(i, mut stream)| {
-        send_message_to_stream(&ServerMessage::SymbolAssignment(curr_symbol), &mut stream)
+        send_message_to_stream(&ServerMessage::SymbolAssignment(curr_player), &mut stream)
           .expect("sending message failed");
         info!("Player{} connected {}", i, stream.peer_addr().unwrap());
-        info!("Player{} was assigned {:?}", i, curr_symbol);
+        info!("Player{} was assigned {:?}", i, curr_player);
 
-        let r = (curr_symbol, stream);
-        curr_symbol.switch();
+        let r = (curr_player, stream);
+        curr_player.switch();
         r
       })
       .collect();
@@ -57,7 +57,7 @@ impl Server {
 
   fn play_game(&mut self) -> eyre::Result<()> {
     let mut outer_board = OuterBoard::default();
-    let mut curr_player: PlayerSymbol = rand::random();
+    let mut curr_player: Player = rand::random();
     let mut curr_inner_board_pos_opt: Option<OuterPos> = None;
 
     tracing::info!("New game started.");
@@ -109,23 +109,23 @@ impl Server {
       self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
 
       match outer_board.tile(curr_inner_board_pos).board_state() {
-        GenericTileBoardState::FreeUndecided => {}
-        GenericTileBoardState::UnoccupiableDraw => {
+        TileBoardState::Free => {}
+        TileBoardState::Drawn => {
           info!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
         }
-        GenericTileBoardState::OccupiedWon(winner) => {
+        TileBoardState::Won(winner) => {
           assert_eq!(winner, curr_player);
           info!("{:?} won InnerBoard {:?}.", winner, curr_inner_board_pos);
         }
       }
 
       match outer_board.board_state() {
-        GenericTileBoardState::FreeUndecided => {}
-        GenericTileBoardState::UnoccupiableDraw => {
+        TileBoardState::Free => {}
+        TileBoardState::Drawn => {
           info!("The game ended in a draw.");
           break Ok(());
         }
-        GenericTileBoardState::OccupiedWon(winner) => {
+        TileBoardState::Won(winner) => {
           assert_eq!(winner, curr_player);
           info!("{:?} won the game.", winner);
           break Ok(());
@@ -145,27 +145,23 @@ impl Server {
 }
 
 impl Server {
-  pub fn stream_mut(&mut self, player: PlayerSymbol) -> &mut TcpStream {
-    &mut self.streams[player.to_idx()]
+  pub fn stream_mut(&mut self, player: Player) -> &mut TcpStream {
+    &mut self.streams[player.idx()]
   }
 
-  pub fn send_message(
-    &mut self,
-    message: &ServerMessage,
-    player: PlayerSymbol,
-  ) -> eyre::Result<()> {
+  pub fn send_message(&mut self, message: &ServerMessage, player: Player) -> eyre::Result<()> {
     send_message_to_stream(message, self.stream_mut(player))?;
     Ok(())
   }
 
   pub fn broadcast_message(&mut self, message: &ServerMessage) -> eyre::Result<()> {
-    for p in PLAYER_SYMBOLS {
+    for p in PLAYERS {
       self.send_message(message, p)?;
     }
     Ok(())
   }
 
-  pub fn receive_message(&mut self, player: PlayerSymbol) -> eyre::Result<ClientMessage> {
+  pub fn receive_message(&mut self, player: Player) -> eyre::Result<ClientMessage> {
     receive_message_from_stream(self.stream_mut(player))
   }
 }

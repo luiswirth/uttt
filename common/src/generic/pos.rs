@@ -2,9 +2,9 @@
 ///
 /// Instance guranteed to be valid.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct GenericPos([u8; 2]);
+pub struct Pos([u8; 2]);
 
-impl GenericPos {
+impl Pos {
   pub const fn new_arr(arr: [u8; 2]) -> Self {
     assert!(arr[0] < 3 && arr[1] < 3);
     Self(arr)
@@ -21,5 +21,9 @@ impl GenericPos {
   }
   pub fn linear_idx(self) -> usize {
     (self.x() * 3 + self.y()) as usize
+  }
+
+  pub fn iter(self) -> impl Iterator<Item = Self> {
+    std::iter::once(self)
   }
 }

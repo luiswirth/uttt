@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::generic::pos::GenericPos;
+use crate::generic::pos::Pos;
 
 /// instance guranteed to be valid
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -17,7 +17,7 @@ impl GlobalPos {
 }
 
 impl IntoIterator for GlobalPos {
-  type Item = GenericPos;
+  type Item = Pos;
   type IntoIter = GlobalPosIter;
   fn into_iter(self) -> Self::IntoIter {
     GlobalPosIter { global: self, i: 0 }
@@ -29,7 +29,7 @@ pub struct GlobalPosIter {
   i: u8,
 }
 impl Iterator for GlobalPosIter {
-  type Item = GenericPos;
+  type Item = Pos;
   fn next(&mut self) -> Option<Self::Item> {
     match self.i {
       0 => {
@@ -75,7 +75,7 @@ impl OuterPos {
   }
 }
 
-impl From<OuterPos> for GenericPos {
+impl From<OuterPos> for Pos {
   fn from(outer: OuterPos) -> Self {
     Self::new_arr(outer.0)
   }
@@ -98,7 +98,7 @@ impl InnerPos {
   }
 }
 
-impl From<InnerPos> for GenericPos {
+impl From<InnerPos> for Pos {
   fn from(inner: InnerPos) -> Self {
     Self::new_arr(inner.0)
   }
