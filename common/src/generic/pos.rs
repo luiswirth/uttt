@@ -22,6 +22,9 @@ impl Pos {
   pub fn linear_idx(self) -> usize {
     (self.x() * 3 + self.y()) as usize
   }
+  pub fn from_linear_idx(idx: usize) -> Self {
+    Self::new(idx as u8 / 3, idx as u8 % 3)
+  }
 
   pub fn iter(self) -> impl Iterator<Item = Self> {
     std::iter::once(self)

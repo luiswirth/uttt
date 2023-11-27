@@ -12,8 +12,10 @@ pub const DEFAULT_IP: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
 pub const DEFAULT_PORT: u16 = 42069;
 
 pub const NPLAYERS: u8 = 2;
-pub const LOCAL_BOARD_SIZE: u8 = 3;
-pub const PLAYERS: [PlayerSymbol; 2] = [PlayerSymbol::X, PlayerSymbol::O];
+pub const PLAYERS: [PlayerSymbol; NPLAYERS as usize] = [PlayerSymbol::X, PlayerSymbol::O];
+
+pub const BOARD_SIDE_LENGTH: u8 = 3;
+pub const BOARD_AREA: u8 = BOARD_SIDE_LENGTH * BOARD_SIDE_LENGTH;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PlayerSymbol {
@@ -43,6 +45,14 @@ impl PlayerSymbol {
     match self {
       Self::X => 'X',
       Self::O => 'O',
+    }
+  }
+
+  pub fn from_char(c: char) -> Option<Self> {
+    match c {
+      'X' => Some(Self::X),
+      'O' => Some(Self::O),
+      _ => None,
     }
   }
 }

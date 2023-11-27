@@ -1,4 +1,5 @@
-use crate::{generic::line::LineState, PlayerSymbol};
+use crate::{generic::line::LineState, PlayerSymbol, BOARD_AREA};
+use std::str::FromStr;
 
 use super::{line::Line, pos::Pos};
 
@@ -238,6 +239,19 @@ impl TrivialTile {
   pub fn is_won(self) -> bool {
     matches!(self, Self::Won(_))
   }
+
+  pub fn as_char(self) -> char {
+    match self {
+      Self::Free => '_',
+      Self::Won(p) => p.as_char(),
+    }
+  }
+  pub fn from_char(c: char) -> Option<Self> {
+    match c {
+      '_' => Some(Self::Free),
+      _ => PlayerSymbol::from_char(c).map(Self::Won),
+    }
+  }
 }
 
 impl From<TrivialTile> for TileBoardState {
@@ -249,35 +263,52 @@ impl From<TrivialTile> for TileBoardState {
   }
 }
 
+#[derive(Debug)]
+pub enum TrivialBoardParseError {
+  InvalidChar(char),
+  BadSymbolCount,
+}
+
+impl FromStr for TrivialBoard {
+  type Err = TrivialBoardParseError;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    let mut board = TrivialBoard::default();
+
+    let tiles: Result<Vec<_>, _> = s
+      .chars()
+      .filter(|c| !c.is_whitespace())
+      .map(|c| TrivialTile::from_char(c).ok_or(TrivialBoardParseError::InvalidChar(c)))
+      .collect();
+    let tiles: [TrivialTile; BOARD_AREA as usize] = tiles?
+      .try_into()
+      .map_err(|_| TrivialBoardParseError::BadSymbolCount)?;
+
+    for (i, tile) in tiles.into_iter().enumerate() {
+      if let TrivialTile::Won(p) = tile {
+        let pos = Pos::from_linear_idx(i);
+        // TODO: maybe handle better
+        assert!(board.try_place_symbol(pos.iter(), p));
+      }
+    }
+
+    Ok(board)
+  }
+}
+
 #[cfg(test)]
 mod test {
-  use super::TrivialBoard;
-  use crate::{
-    generic::{board::TileBoardState, pos::Pos},
-    PlayerSymbol,
-  };
+  use super::{TileBoardState, TrivialBoard};
 
-  // XOO
-  // OXX
-  // _XO
-  // is a draw
   #[test]
   fn check_draw_detection() {
-    let mut board = TrivialBoard::default();
-    let moves = vec![
-      (Pos::new(0, 0), PlayerSymbol::X),
-      (Pos::new(1, 0), PlayerSymbol::O),
-      (Pos::new(2, 0), PlayerSymbol::O),
-      (Pos::new(0, 1), PlayerSymbol::O),
-      (Pos::new(1, 1), PlayerSymbol::X),
-      (Pos::new(2, 1), PlayerSymbol::X),
-      //(Pos::new(0, 2), PlayerSymbol::Empty),
-      (Pos::new(1, 2), PlayerSymbol::X),
-      (Pos::new(2, 2), PlayerSymbol::O),
-    ];
-    for (pos, sym) in moves {
-      assert!(board.try_place_symbol(pos.iter(), sym));
-    }
+    let board = r#"
+      XOO
+      OXX
+      _XO
+      "#
+    .parse::<TrivialBoard>()
+    .unwrap();
     assert_eq!(board.board_state, TileBoardState::Drawn);
   }
 }

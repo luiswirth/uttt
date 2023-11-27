@@ -1,8 +1,7 @@
-use crate::{PlayerSymbol, LOCAL_BOARD_SIZE};
-
 use super::{board::TileBoardState, pos::Pos};
+use crate::{PlayerSymbol, BOARD_SIDE_LENGTH};
 
-const NLINES: usize = 2 * LOCAL_BOARD_SIZE as usize + 2;
+const NLINES: usize = 2 * BOARD_SIDE_LENGTH as usize + 2;
 
 /// guranteed to be valid
 #[derive(Clone, Copy)]
@@ -14,23 +13,23 @@ pub(crate) enum Line {
 }
 impl Line {
   pub(crate) fn x_axis(y: u8) -> Self {
-    assert!(y < LOCAL_BOARD_SIZE);
+    assert!(y < BOARD_SIDE_LENGTH);
     Self::XAxis(y)
   }
   pub(crate) fn y_axis(x: u8) -> Self {
-    assert!(x < LOCAL_BOARD_SIZE);
+    assert!(x < BOARD_SIDE_LENGTH);
     Self::YAxis(x)
   }
 
   pub(crate) fn idx(self) -> usize {
-    let line_length = LOCAL_BOARD_SIZE as usize;
+    let line_length = BOARD_SIDE_LENGTH as usize;
     match self {
       Line::XAxis(y) => {
-        assert!(y < LOCAL_BOARD_SIZE);
+        assert!(y < BOARD_SIDE_LENGTH);
         y as usize
       }
       Line::YAxis(x) => {
-        assert!(x < LOCAL_BOARD_SIZE);
+        assert!(x < BOARD_SIDE_LENGTH);
         x as usize + line_length
       }
       Line::MainDiagonal => 2 * line_length,
@@ -40,11 +39,11 @@ impl Line {
   pub(crate) fn from_idx(idx: usize) -> Self {
     assert!(idx < NLINES);
     let idx = idx as u8;
-    if (0..LOCAL_BOARD_SIZE).contains(&idx) {
+    if (0..BOARD_SIDE_LENGTH).contains(&idx) {
       Line::XAxis(idx)
-    } else if (LOCAL_BOARD_SIZE..2 * LOCAL_BOARD_SIZE).contains(&idx) {
-      Line::YAxis(idx - LOCAL_BOARD_SIZE)
-    } else if idx == 2 * LOCAL_BOARD_SIZE {
+    } else if (BOARD_SIDE_LENGTH..2 * BOARD_SIDE_LENGTH).contains(&idx) {
+      Line::YAxis(idx - BOARD_SIDE_LENGTH)
+    } else if idx == 2 * BOARD_SIDE_LENGTH {
       Line::MainDiagonal
     } else {
       Line::AntiDiagonal
@@ -114,8 +113,8 @@ impl LineState {
     match [self, other] {
       [Self::PartiallyWon(p0, n0), Self::PartiallyWon(p1, n1)] if p0 == p1 => {
         let n = n0 + n1;
-        debug_assert!(n <= LOCAL_BOARD_SIZE);
-        if n == LOCAL_BOARD_SIZE {
+        debug_assert!(n <= BOARD_SIDE_LENGTH);
+        if n == BOARD_SIDE_LENGTH {
           Self::Won(p0)
         } else {
           Self::PartiallyWon(p0, n)
