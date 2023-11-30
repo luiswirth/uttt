@@ -1,10 +1,13 @@
 pub mod generic;
 pub mod specific;
 
+use std::net::Ipv4Addr;
+
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-pub const PORT: u16 = 42069;
+pub const DEFAULT_IP: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
+pub const DEFAULT_PORT: u16 = 42069;
 
 pub const NPLAYERS: u8 = 2;
 pub const LOCAL_BOARD_SIZE: u8 = 3;

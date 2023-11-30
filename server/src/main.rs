@@ -5,7 +5,7 @@ use common::{
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
     pos::{InnerPos, OuterPos},
   },
-  Player, PLAYERS, PORT,
+  Player, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
 };
 
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
@@ -18,11 +18,55 @@ pub struct Server {
 
 impl Server {
   pub fn new() -> eyre::Result<Self> {
-    let ip_addr = Ipv4Addr::new(127, 0, 0, 1);
-    let socket_addr = SocketAddrV4::new(ip_addr, PORT);
+    let ip_addr = loop {
+      println!(
+        "Enter IP address (press enter for default = {}):",
+        DEFAULT_IP
+      );
+      let mut ip_addr = String::new();
+      std::io::stdin().read_line(&mut ip_addr)?;
+      let ip_addr = ip_addr.trim();
+
+      match ip_addr.is_empty() {
+        true => {
+          info!("Using default ip address {}", DEFAULT_IP);
+          break DEFAULT_IP;
+        }
+        false => match ip_addr.parse::<Ipv4Addr>() {
+          Ok(ip_addr) => break ip_addr,
+          Err(e) => {
+            error!("Parsing ip address failed: {}", e);
+            continue;
+          }
+        },
+      }
+    };
+    let port = loop {
+      println!("Enter port (press enter for default = {}):", DEFAULT_PORT);
+      let mut port = String::new();
+      std::io::stdin().read_line(&mut port)?;
+      let port = port.trim();
+
+      match port.is_empty() {
+        true => {
+          info!("Using default port {}", DEFAULT_PORT);
+          break DEFAULT_PORT;
+        }
+        false => match port.parse::<u16>() {
+          Ok(port) => break port,
+          Err(e) => {
+            error!("Parsing port failed: {}", e);
+            continue;
+          }
+        },
+      }
+    };
+    let socket_addr = SocketAddrV4::new(ip_addr, port);
     let listener = TcpListener::bind(socket_addr)?;
 
     let mut curr_player: Player = rand::random();
+
+    info!("Waiting for connections...");
     let mut streams: Vec<(Player, TcpStream)> = listener
       .incoming()
       .filter_map(|stream| match stream {

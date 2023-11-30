@@ -5,7 +5,7 @@ use common::{
     message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
     pos::{GlobalPos, InnerPos, OuterPos},
   },
-  Player, PORT,
+  Player, DEFAULT_PORT,
 };
 
 use std::{
@@ -89,7 +89,7 @@ impl eframe::App for Client {
               match Ipv4Addr::from_str(cstate.ip_addr.trim()) {
                 Ok(ip_addr) => {
                   cstate.ip_addr_error = None;
-                  let socket_addr = SocketAddrV4::new(ip_addr, PORT);
+                  let socket_addr = SocketAddrV4::new(ip_addr, DEFAULT_PORT);
                   match TcpStream::connect(socket_addr) {
                     Ok(tcp_stream) => {
                       cstate.connection_error = None;
