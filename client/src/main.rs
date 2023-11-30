@@ -5,7 +5,7 @@ use common::{
     message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
     pos::{GlobalPos, InnerPos, OuterPos},
   },
-  Player, DEFAULT_PORT,
+  Player, DEFAULT_IP, DEFAULT_PORT,
 };
 
 use std::{
@@ -30,16 +30,21 @@ impl Client {
 struct ConnectingState {
   ip_addr: String,
   ip_addr_error: Option<String>,
+  port: String,
+  port_error: Option<String>,
   connection_error: Option<String>,
   msg_handler: Option<MessageIoHandlerNoBlocking>,
   this_player: Option<Player>,
 }
 impl Default for ConnectingState {
   fn default() -> Self {
-    let ip_addr = String::from("127.0.0.1");
+    let ip_addr = DEFAULT_IP.to_string();
+    let port = DEFAULT_PORT.to_string();
     Self {
       ip_addr,
       ip_addr_error: None,
+      port,
+      port_error: None,
       connection_error: None,
       msg_handler: None,
       this_player: None,
@@ -67,6 +72,7 @@ impl Default for ClientState {
 impl eframe::App for Client {
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
     ctx.request_repaint();
+
     egui::CentralPanel::default().show(ctx, |ui| {
       type Ts = egui::TextStyle;
       let mut style = (*ctx.style()).clone();
@@ -85,11 +91,17 @@ impl eframe::App for Client {
             let ip_label = ui.label("IP:");
             ui.text_edit_singleline(&mut cstate.ip_addr)
               .labelled_by(ip_label.id);
-            if ui.button("Connect").clicked() {
+            let port_label = ui.label("Port:");
+            ui.text_edit_singleline(&mut cstate.port)
+              .labelled_by(port_label.id);
+            if cstate.msg_handler.is_none() && ui.button("Connect").clicked() {
               match Ipv4Addr::from_str(cstate.ip_addr.trim()) {
                 Ok(ip_addr) => {
                   cstate.ip_addr_error = None;
-                  let socket_addr = SocketAddrV4::new(ip_addr, DEFAULT_PORT);
+                  match cstate.port.trim().parse::<u16>() {
+                    Ok(port) => {
+                      cstate.port_error = None;
+                      let socket_addr = SocketAddrV4::new(ip_addr, port);
                   match TcpStream::connect(socket_addr) {
                     Ok(tcp_stream) => {
                       cstate.connection_error = None;
@@ -99,6 +111,11 @@ impl eframe::App for Client {
                     }
                     Err(e) => {
                       cstate.connection_error = Some(e.to_string());
+                        }
+                      }
+                    }
+                    Err(e) => {
+                      cstate.port_error = Some(e.to_string());
                     }
                   }
                 }
@@ -109,6 +126,9 @@ impl eframe::App for Client {
             }
             if let Some(e) = cstate.ip_addr_error.as_ref() {
               ui.colored_label(egui::Color32::RED, format!("Invalid IP address: {}", e));
+            }
+            if let Some(e) = cstate.port_error.as_ref() {
+              ui.colored_label(egui::Color32::RED, format!("Invalid port: {}", e));
             }
             if let Some(e) = cstate.connection_error.as_ref() {
               ui.colored_label(
