@@ -84,6 +84,10 @@ impl eframe::App for Client {
 
       self.client_state = match mem::take(&mut self.client_state) {
         ClientState::Connecting(mut cstate) => {
+          if let Some(ref mut msg_handler) = cstate.msg_handler {
+            msg_handler.try_write_message::<()>(None).unwrap();
+          }
+
           ui.add_space(50.0);
           ui.vertical_centered(|ui| {
             ui.heading("Welcome to UTTT!");
@@ -172,6 +176,7 @@ impl eframe::App for Client {
           .inner
         }
         ClientState::Playing(mut pstate) => {
+          pstate.msg_handler.try_write_message::<()>(None).unwrap();
           if pstate.this_player == pstate.curr_player {
             ui.label("Your turn.");
           } else {
@@ -190,7 +195,7 @@ impl eframe::App for Client {
             }
             if is_allowed_to_place {
               let msg = ClientMessage::PlaceSymbolProposal(clicked_tile);
-              pstate.msg_handler.try_write_messages(Some(msg)).unwrap();
+              pstate.msg_handler.try_write_message(Some(msg)).unwrap();
             }
           }
           if let Some(msg) = pstate

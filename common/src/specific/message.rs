@@ -160,7 +160,7 @@ impl MessageIoHandlerNoBlocking {
 
   /// Does partial writes to the stream until all messages are sent.
   /// Returns `Ok(true)` if all messages were sent, `Ok(false)` if there are still messages to send, `Err(e)` if an error occurred.
-  pub fn try_write_messages<Msg: Serialize>(&mut self, msg: Option<Msg>) -> std::io::Result<bool> {
+  pub fn try_write_message<Msg: Serialize>(&mut self, msg: Option<Msg>) -> std::io::Result<bool> {
     if let Some(msg) = msg {
       let msg_string = ron::to_string(&msg).expect("serialization failed");
       let msg_bytes = msg_string.as_bytes();
