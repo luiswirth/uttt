@@ -39,4 +39,3 @@ impl Distribution<Player> for rand::distributions::Standard {
     Player::from_idx(rng.gen_range(0..2))
   }
 }
-

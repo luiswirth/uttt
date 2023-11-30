@@ -8,13 +8,24 @@ use common::{
   Player, PORT,
 };
 
-use eframe::egui;
-
 use std::{
   mem,
   net::{Ipv4Addr, SocketAddrV4, TcpStream},
   str::FromStr,
 };
+
+use eframe::egui;
+
+#[derive(Default)]
+pub struct Client {
+  client_state: ClientState,
+}
+
+impl Client {
+  pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    Self::default()
+  }
+}
 
 struct ConnectingState {
   ip_addr: String,
@@ -53,19 +64,8 @@ impl Default for ClientState {
   }
 }
 
-fn main() -> eyre::Result<()> {
-  tracing_subscriber::fmt()
-    .with_max_level(tracing::Level::INFO)
-    .init();
-
-  let options = eframe::NativeOptions {
-    initial_window_size: Some(egui::vec2(320.0, 240.0)),
-    ..Default::default()
-  };
-
-  let mut client_state = ClientState::default();
-
-  eframe::run_simple_native("UTTT", options, move |ctx, _frame| {
+impl eframe::App for Client {
+  fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
     ctx.request_repaint();
     egui::CentralPanel::default().show(ctx, |ui| {
       type Ts = egui::TextStyle;
@@ -76,7 +76,7 @@ fn main() -> eyre::Result<()> {
       );
       ctx.set_style(style);
 
-      client_state = match mem::take(&mut client_state) {
+      self.client_state = match mem::take(&mut self.client_state) {
         ClientState::Connecting(mut cstate) => {
           ui.add_space(50.0);
           ui.vertical_centered(|ui| {
@@ -193,10 +193,24 @@ fn main() -> eyre::Result<()> {
         }
       }
     });
-  })
-  .unwrap();
+  }
+}
 
-  Ok(())
+fn main() {
+  tracing_subscriber::fmt()
+    .with_max_level(tracing::Level::INFO)
+    .init();
+
+  let native_options = eframe::NativeOptions {
+    initial_window_size: Some(egui::vec2(320.0, 240.0)),
+    ..Default::default()
+  };
+  eframe::run_native(
+    "UTTT",
+    native_options,
+    Box::new(|cc| Box::new(Client::new(cc))),
+  )
+  .unwrap();
 }
 
 fn draw_board(ui: &mut egui::Ui, outer_board: &OuterBoard) -> Option<GlobalPos> {
