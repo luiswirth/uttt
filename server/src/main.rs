@@ -3,12 +3,12 @@ use common::{
   specific::{
     board::OuterBoard,
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-    pos::{GlobalPos, OuterPos},
+    pos::{InnerPos, OuterPos},
   },
-  Player, PLAYERS,
+  Player, PLAYERS, PORT,
 };
 
-use std::net::{TcpListener, TcpStream};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use tracing::{error, info};
 
 pub struct Server {
@@ -18,7 +18,9 @@ pub struct Server {
 
 impl Server {
   pub fn new() -> eyre::Result<Self> {
-    let listener = TcpListener::bind("localhost:42069")?;
+    let ip_addr = Ipv4Addr::new(127, 0, 0, 1);
+    let socket_addr = SocketAddrV4::new(ip_addr, PORT);
+    let listener = TcpListener::bind(socket_addr)?;
 
     let mut curr_player: Player = rand::random();
     let mut streams: Vec<(Player, TcpStream)> = listener
@@ -58,64 +60,43 @@ impl Server {
   fn play_game(&mut self) -> eyre::Result<()> {
     let mut outer_board = OuterBoard::default();
     let mut curr_player: Player = rand::random();
-    let mut curr_inner_board_pos_opt: Option<OuterPos> = None;
+    let mut curr_outer_pos_opt: Option<OuterPos> = None;
 
     tracing::info!("New game started.");
     self.broadcast_message(&ServerMessage::GameStart(curr_player))?;
 
     // main game loop
     loop {
-      let &mut curr_inner_board_pos = curr_inner_board_pos_opt.get_or_insert_with(|| {
-        // choose inner board
-        let inner_board_pos = loop {
-          let inner_board_pos = self
-            .receive_message(curr_player)
-            .unwrap()
-            .choose_inner_board_proposal();
-
-          if outer_board.tile(inner_board_pos).is_free() {
-            break inner_board_pos;
-          } else {
-            self
-              .send_message(&ServerMessage::ChooseInnerBoardRejected, curr_player)
-              .unwrap();
-            continue;
-          }
-        };
-        self
-          .broadcast_message(&ServerMessage::ChooseInnerBoardAccepted(inner_board_pos))
-          .unwrap();
-        inner_board_pos
-      });
-
-      let tile_inner_pos = loop {
-        let tile_inner_pos = self.receive_message(curr_player)?.place_symbol_proposal();
-
-        if outer_board
-          .trivial_tile(GlobalPos::from((curr_inner_board_pos, tile_inner_pos)))
-          .is_free()
-        {
-          break tile_inner_pos;
-        } else {
+      let tile_global_pos = self.receive_message(curr_player)?.place_symbol_proposal();
+      if let Some(curr_inner_board_pos) = curr_outer_pos_opt {
+        if curr_inner_board_pos != OuterPos::from(tile_global_pos) {
           self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
-          continue;
+          panic!("invalid move");
         }
-      };
+      }
+      if !outer_board.tile(OuterPos::from(tile_global_pos)).is_free() {
+        self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
+        panic!("invalid move");
+      }
+      if !outer_board.trivial_tile(tile_global_pos).is_free() {
+        self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
+        panic!("invalid move");
+      }
 
-      outer_board.place_symbol(
-        GlobalPos::from((curr_inner_board_pos, tile_inner_pos)),
-        curr_player,
-      );
-      self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_inner_pos))?;
+      let curr_outer_pos = curr_outer_pos_opt.get_or_insert(OuterPos::from(tile_global_pos));
 
-      match outer_board.tile(curr_inner_board_pos).board_state() {
+      outer_board.place_symbol(tile_global_pos, curr_player);
+      self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))?;
+      info!("{:?} placed symbol at {:?}", curr_player, tile_global_pos);
+
+      match outer_board.tile(*curr_outer_pos).board_state() {
         TileBoardState::Free => {}
         TileBoardState::Drawn => {
-          info!("InnerBoard {:?} ended in a draw.", curr_inner_board_pos);
+          info!("InnerBoard {:?} ended in a draw.", curr_outer_pos);
         }
         TileBoardState::Won(winner) => {
           assert_eq!(winner, curr_player);
-          info!("{:?} won InnerBoard {:?}.", winner, curr_inner_board_pos);
+          info!("{:?} won InnerBoard {:?}.", winner, curr_outer_pos);
         }
       }
 
@@ -132,11 +113,11 @@ impl Server {
         }
       }
 
-      let next_inner_board_pos = tile_inner_pos.as_outer();
+      let next_inner_board_pos = InnerPos::from(tile_global_pos).as_outer();
       if outer_board.tile(next_inner_board_pos).is_free() {
-        curr_inner_board_pos_opt = Some(next_inner_board_pos);
+        curr_outer_pos_opt = Some(next_inner_board_pos);
       } else {
-        curr_inner_board_pos_opt = None;
+        curr_outer_pos_opt = None;
       }
 
       curr_player = curr_player.other();
@@ -161,7 +142,7 @@ impl Server {
     Ok(())
   }
 
-  pub fn receive_message(&mut self, player: Player) -> eyre::Result<ClientMessage> {
+  pub fn receive_message(&mut self, player: Player) -> std::io::Result<ClientMessage> {
     receive_message_from_stream(self.stream_mut(player))
   }
 }

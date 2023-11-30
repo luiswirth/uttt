@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::generic::pos::Pos;
 
 /// instance guranteed to be valid
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GlobalPos([u8; 2]);
 
 impl GlobalPos {
@@ -62,7 +62,7 @@ impl From<GlobalPos> for InnerPos {
 }
 
 /// instance guranteed to be valid
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct OuterPos(pub(super) [u8; 2]);
 
 impl OuterPos {
@@ -82,7 +82,7 @@ impl From<OuterPos> for Pos {
 }
 
 /// instance guranteed to be valid
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct InnerPos(pub(super) [u8; 2]);
 
 impl InnerPos {

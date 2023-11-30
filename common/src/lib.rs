@@ -4,6 +4,8 @@ pub mod specific;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
+pub const PORT: u16 = 42069;
+
 pub const NPLAYERS: u8 = 2;
 pub const LOCAL_BOARD_SIZE: u8 = 3;
 pub const PLAYERS: [Player; 2] = [Player::Cross, Player::Circle];
@@ -37,3 +39,4 @@ impl Distribution<Player> for rand::distributions::Standard {
     Player::from_idx(rng.gen_range(0..2))
   }
 }
+

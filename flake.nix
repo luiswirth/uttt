@@ -31,6 +31,7 @@
             rust-analyzer
             bacon
             cargo-edit
+            lldb
 
             udev
             libxkbcommon
