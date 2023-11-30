@@ -157,9 +157,9 @@ impl Server {
         }
       }
 
-      let next_inner_board_pos = InnerPos::from(tile_global_pos).as_outer();
-      if outer_board.tile(next_inner_board_pos).is_free() {
-        curr_outer_pos_opt = Some(next_inner_board_pos);
+      let next_outer_pos = InnerPos::from(tile_global_pos).as_outer();
+      if outer_board.tile(next_outer_pos).is_free() {
+        curr_outer_pos_opt = Some(next_outer_pos);
       } else {
         curr_outer_pos_opt = None;
       }

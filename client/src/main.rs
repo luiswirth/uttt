@@ -106,15 +106,15 @@ impl eframe::App for Client {
                     Ok(port) => {
                       cstate.port_error = None;
                       let socket_addr = SocketAddrV4::new(ip_addr, port);
-                  match TcpStream::connect(socket_addr) {
-                    Ok(tcp_stream) => {
-                      cstate.connection_error = None;
-                      tcp_stream.set_nonblocking(true).unwrap();
-                      let new_msg_handler = MessageIoHandlerNoBlocking::new(tcp_stream);
-                      cstate.msg_handler = Some(new_msg_handler);
-                    }
-                    Err(e) => {
-                      cstate.connection_error = Some(e.to_string());
+                      match TcpStream::connect(socket_addr) {
+                        Ok(tcp_stream) => {
+                          cstate.connection_error = None;
+                          tcp_stream.set_nonblocking(true).unwrap();
+                          let new_msg_handler = MessageIoHandlerNoBlocking::new(tcp_stream);
+                          cstate.msg_handler = Some(new_msg_handler);
+                        }
+                        Err(e) => {
+                          cstate.connection_error = Some(e.to_string());
                         }
                       }
                     }
@@ -208,7 +208,12 @@ impl eframe::App for Client {
                 pstate
                   .outer_board
                   .place_symbol(global_pos, pstate.curr_player);
-                pstate.curr_outer_pos_opt = Some(InnerPos::from(global_pos).as_outer());
+                let next_outer_pos = InnerPos::from(global_pos).as_outer();
+                if pstate.outer_board.tile(next_outer_pos).is_free() {
+                  pstate.curr_outer_pos_opt = Some(InnerPos::from(global_pos).as_outer());
+                } else {
+                  pstate.curr_outer_pos_opt = None;
+                }
                 pstate.curr_player.switch();
               }
               _ => panic!(),
