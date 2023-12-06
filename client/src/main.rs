@@ -1,7 +1,7 @@
 use common::{
   generic::board::{TileBoardState, TrivialTile},
   specific::{
-    board::OuterBoard,
+    game::GameState,
     message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
     pos::{GlobalPos, InnerPos, OuterPos},
   },
@@ -54,9 +54,7 @@ impl Default for ConnectingState {
 struct PlayingState {
   msg_handler: MessageIoHandlerNoBlocking,
   this_player: Player,
-  curr_player: Player,
-  outer_board: OuterBoard,
-  curr_outer_pos_opt: Option<OuterPos>,
+  game_state: GameState,
 }
 
 enum ClientState {
@@ -156,12 +154,11 @@ impl eframe::App for Client {
                 Some(this_player) => {
                   if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
                     let starting_player = msg.game_start();
+                    let game_state = GameState::new(starting_player);
                     ClientState::Playing(PlayingState {
                       msg_handler,
                       this_player,
-                      curr_player: starting_player,
-                      outer_board: OuterBoard::default(),
-                      curr_outer_pos_opt: None,
+                      game_state,
                     })
                   } else {
                     cstate.msg_handler = Some(msg_handler);
@@ -177,20 +174,25 @@ impl eframe::App for Client {
         }
         ClientState::Playing(mut pstate) => {
           pstate.msg_handler.try_write_message::<()>(None).unwrap();
-          if pstate.this_player == pstate.curr_player {
+          if pstate.this_player == pstate.game_state.curr_player {
             ui.label("Your turn.");
           } else {
             ui.label("Opponent's turn.");
           }
-          let clicked_tile = draw_board(ui, &pstate.outer_board);
+          let clicked_tile = draw_board(ui, &pstate.game_state);
           if let Some(clicked_tile) = clicked_tile {
-            let mut is_allowed_to_place = pstate.curr_player == pstate.this_player
+            let mut is_allowed_to_place = pstate.game_state.curr_player == pstate.this_player
               && pstate
+                .game_state
                 .outer_board
                 .tile(OuterPos::from(clicked_tile))
                 .is_free()
-              && pstate.outer_board.trivial_tile(clicked_tile).is_free();
-            if let Some(curr_outer_pos) = pstate.curr_outer_pos_opt {
+              && pstate
+                .game_state
+                .outer_board
+                .trivial_tile(clicked_tile)
+                .is_free();
+            if let Some(curr_outer_pos) = pstate.game_state.curr_outer_pos_opt {
               is_allowed_to_place &= curr_outer_pos == OuterPos::from(clicked_tile);
             }
             if is_allowed_to_place {
@@ -206,15 +208,17 @@ impl eframe::App for Client {
             match msg {
               ServerMessage::PlaceSymbolAccepted(global_pos) => {
                 pstate
+                  .game_state
                   .outer_board
-                  .place_symbol(global_pos, pstate.curr_player);
+                  .place_symbol(global_pos, pstate.game_state.curr_player);
                 let next_outer_pos = InnerPos::from(global_pos).as_outer();
-                if pstate.outer_board.tile(next_outer_pos).is_free() {
-                  pstate.curr_outer_pos_opt = Some(InnerPos::from(global_pos).as_outer());
+                if pstate.game_state.outer_board.tile(next_outer_pos).is_free() {
+                  pstate.game_state.curr_outer_pos_opt =
+                    Some(InnerPos::from(global_pos).as_outer());
                 } else {
-                  pstate.curr_outer_pos_opt = None;
+                  pstate.game_state.curr_outer_pos_opt = None;
                 }
-                pstate.curr_player.switch();
+                pstate.game_state.curr_player.switch();
               }
               _ => panic!(),
             }
@@ -243,13 +247,12 @@ fn main() {
   .unwrap();
 }
 
-fn draw_board(ui: &mut egui::Ui, outer_board: &OuterBoard) -> Option<GlobalPos> {
-  use egui::{pos2, vec2, Color32, Painter, Pos2, Rect, Sense, Stroke, Vec2};
+fn draw_board(ui: &mut egui::Ui, game_state: &GameState) -> Option<GlobalPos> {
+  use egui::{pos2, vec2, Color32, Painter, Rect, Sense, Stroke, Vec2};
 
-  let size = Vec2::splat(ui.available_size().min_elem()); // Concise way to determine the size
-  let (response, painter) = ui.allocate_painter(size, Sense::click());
+  let available_size = Vec2::splat(ui.available_size().min_elem());
+  let (response, painter) = ui.allocate_painter(available_size, Sense::click());
 
-  // Helper function to draw a cross
   let draw_cross = |painter: &Painter, rect: Rect, stroke: Stroke| {
     let offset = rect.width() / 8.0;
     let a = rect.left_top() + Vec2::splat(offset);
@@ -260,89 +263,80 @@ fn draw_board(ui: &mut egui::Ui, outer_board: &OuterBoard) -> Option<GlobalPos> 
     painter.line_segment([a, b], stroke);
   };
 
-  // Helper function to draw a circle
-  let draw_circle = |painter: &Painter, center: Pos2, radius: f32, stroke: Stroke| {
+  let draw_circle = |painter: &Painter, rect: Rect, stroke: Stroke| {
+    let center = rect.center();
+    let radius = rect.width() / 2.0 / 1.5;
     painter.circle_stroke(center, radius, stroke);
   };
 
-  let draw_tile = |painter: &Painter, rect: Rect, tile: TrivialTile| match tile {
-    TrivialTile::Free => {}
-    TrivialTile::Won(symbol) => {
-      let color = match symbol {
-        Player::Cross => Color32::RED,
-        Player::Circle => Color32::BLUE,
-      };
-      let stroke = Stroke::new(5.0, color);
-      match symbol {
-        Player::Cross => draw_cross(painter, rect, stroke),
-        Player::Circle => {
-          let center = rect.center();
-          let radius = rect.width() / 2.0 / 1.5;
-          draw_circle(painter, center, radius, stroke);
-        }
-      }
+  let draw_symbol = |painter: &Painter, rect: Rect, symbol: Player| {
+    let stroke = Stroke::new(5.0, player_color(symbol));
+    match symbol {
+      Player::Cross => draw_cross(painter, rect, stroke),
+      Player::Circle => draw_circle(painter, rect, stroke),
     }
   };
 
-  let draw_grid = |painter: &Painter, rect: Rect, cell_size: Vec2, stroke: Stroke| {
-    for i in 1..=2 {
-      let y = rect.top() + i as f32 * cell_size.y;
-      let x = rect.left() + i as f32 * cell_size.x;
-      painter.line_segment([pos2(rect.left(), y), pos2(rect.right(), y)], stroke);
-      painter.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], stroke);
-    }
-  };
-
-  // Draw outer grid
   let outer_rect = response.rect;
-  let w_third = outer_rect.width() / 3.0;
-  let cell_size = vec2(w_third, w_third);
-  let stroke = Stroke::new(10.0, Color32::BLACK);
-  draw_grid(&painter, outer_rect, cell_size, stroke);
 
-  // Iterate over the outer and inner boards
+  let inner_board_padding = 10.0;
+  let inner_board_size = (outer_rect.width() - 2.0 * inner_board_padding) / 3.0;
+  let tile_padding = 5.0;
+  let tile_size = (inner_board_size - 2.0 * tile_padding) / 3.0;
+
+  let mut clicked_tile = None;
   for youter in 0..3 {
     for xouter in 0..3 {
       let inner_rect = Rect::from_min_size(
         pos2(
-          outer_rect.left() + xouter as f32 * w_third,
-          outer_rect.top() + youter as f32 * w_third,
+          outer_rect.left() + xouter as f32 * (inner_board_size + inner_board_padding),
+          outer_rect.top() + youter as f32 * (inner_board_size + inner_board_padding),
         ),
-        cell_size,
+        Vec2::splat(inner_board_size),
       );
 
-      // Draw inner grid
-      let stroke = Stroke::new(5.0, Color32::BLACK);
-      draw_grid(
-        &painter,
-        inner_rect,
-        vec2(w_third / 3.0, w_third / 3.0),
-        stroke,
-      );
-
-      // Draw the tiles
-      let inner_board = outer_board.tile(OuterPos::new(xouter, youter));
+      let inner_board = game_state.outer_board.tile(OuterPos::new(xouter, youter));
       if let TileBoardState::Won(p) = inner_board.board_state() {
-        draw_tile(&painter, inner_rect, TrivialTile::Won(p))
+        draw_symbol(&painter, inner_rect, p);
       }
 
       for yinner in 0..3 {
         for xinner in 0..3 {
           let tile_rect = Rect::from_min_size(
             pos2(
-              inner_rect.left() + xinner as f32 * w_third / 3.0,
-              inner_rect.top() + yinner as f32 * w_third / 3.0,
+              inner_rect.left() + xinner as f32 * (tile_size + tile_padding),
+              inner_rect.top() + yinner as f32 * (tile_size + tile_padding),
             ),
-            vec2(w_third / 3.0, w_third / 3.0),
+            Vec2::splat(tile_size),
           );
           let tile = inner_board.tile(InnerPos::new(xinner, yinner));
-          draw_tile(&painter, tile_rect, *tile);
 
-          // check if mouse clicked inside tile_rect
+          let unhovered_color = match game_state.curr_outer_pos_opt {
+            Some(curr_outer_pos) if curr_outer_pos == OuterPos::new(xouter, youter) => {
+              player_color(game_state.curr_player)
+            }
+            _ => Color32::DARK_GRAY,
+          };
+
+          let tile_color = ui.ctx().input(|r| {
+            r.pointer
+              .hover_pos()
+              .map(|pos| match tile_rect.contains(pos) {
+                true => Color32::WHITE,
+                false => unhovered_color,
+              })
+              .unwrap_or(unhovered_color)
+          });
+          painter.rect_filled(tile_rect, 0.0, tile_color);
+
+          if let TrivialTile::Won(p) = tile {
+            draw_symbol(&painter, tile_rect, *p);
+          }
+
           if response.clicked()
             && tile_rect.contains(ui.ctx().input(|r| r.pointer.hover_pos().unwrap()))
           {
-            return Some(dbg!(GlobalPos::from((
+            clicked_tile = Some(dbg!(GlobalPos::from((
               OuterPos::new(xouter, youter),
               InnerPos::new(xinner, yinner),
             ))));
@@ -351,5 +345,13 @@ fn draw_board(ui: &mut egui::Ui, outer_board: &OuterBoard) -> Option<GlobalPos> 
       }
     }
   }
-  None
+  clicked_tile
+}
+
+fn player_color(player: Player) -> egui::Color32 {
+  use egui::Color32;
+  match player {
+    Player::Cross => Color32::RED,
+    Player::Circle => Color32::BLUE,
+  }
 }
