@@ -1,9 +1,8 @@
 use common::{
   generic::board::TileBoardState,
   specific::{
-    board::OuterBoard,
+    game::GameState,
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-    pos::{InnerPos, OuterPos},
   },
   Player, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
 };
@@ -102,69 +101,50 @@ impl Server {
   }
 
   fn play_game(&mut self) -> eyre::Result<()> {
-    let mut outer_board = OuterBoard::default();
-    let mut curr_player: Player = rand::random();
-    let mut curr_outer_pos_opt: Option<OuterPos> = None;
+    let starting_player: Player = rand::random();
+    let mut game_state = GameState::new(starting_player);
 
     tracing::info!("New game started.");
-    self.broadcast_message(&ServerMessage::GameStart(curr_player))?;
+    self.broadcast_message(&ServerMessage::GameStart(starting_player))?;
 
     // main game loop
     loop {
-      let tile_global_pos = self.receive_message(curr_player)?.place_symbol_proposal();
-      if let Some(curr_inner_board_pos) = curr_outer_pos_opt {
-        if curr_inner_board_pos != OuterPos::from(tile_global_pos) {
-          self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
-          panic!("invalid move");
-        }
+      let tile_global_pos = self
+        .receive_message(game_state.curr_player)?
+        .place_symbol_proposal();
+      if game_state
+        .outer_board
+        .try_place_symbol(tile_global_pos, game_state.curr_player)
+      {
+        self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))?;
+      } else {
+        self.broadcast_message(&ServerMessage::PlaceSymbolRejected)?;
+        println!(
+          "is placeable: {}",
+          game_state.could_place_symbol(tile_global_pos)
+        );
+        panic!("invalid move! {:?}", tile_global_pos);
       }
-      if !outer_board.tile(OuterPos::from(tile_global_pos)).is_free() {
-        self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
-        panic!("invalid move");
-      }
-      if !outer_board.trivial_tile(tile_global_pos).is_free() {
-        self.send_message(&ServerMessage::PlaceSymbolRejected, curr_player)?;
-        panic!("invalid move");
-      }
+      info!(
+        "{:?} placed symbol at {:?}",
+        game_state.curr_player, tile_global_pos
+      );
 
-      let curr_outer_pos = curr_outer_pos_opt.get_or_insert(OuterPos::from(tile_global_pos));
-
-      outer_board.place_symbol(tile_global_pos, curr_player);
-      self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))?;
-      info!("{:?} placed symbol at {:?}", curr_player, tile_global_pos);
-
-      match outer_board.tile(*curr_outer_pos).board_state() {
-        TileBoardState::Free => {}
-        TileBoardState::Drawn => {
-          info!("InnerBoard {:?} ended in a draw.", curr_outer_pos);
-        }
+      match game_state.outer_board.board_state() {
         TileBoardState::Won(winner) => {
-          assert_eq!(winner, curr_player);
-          info!("{:?} won InnerBoard {:?}.", winner, curr_outer_pos);
+          assert_eq!(winner, game_state.curr_player);
+          info!("{:?} won the game.", winner);
+          break Ok(());
         }
-      }
-
-      match outer_board.board_state() {
-        TileBoardState::Free => {}
         TileBoardState::Drawn => {
           info!("The game ended in a draw.");
           break Ok(());
         }
-        TileBoardState::Won(winner) => {
-          assert_eq!(winner, curr_player);
-          info!("{:?} won the game.", winner);
-          break Ok(());
-        }
+        TileBoardState::Free => {}
       }
 
-      let next_outer_pos = InnerPos::from(tile_global_pos).as_outer();
-      if outer_board.tile(next_outer_pos).is_free() {
-        curr_outer_pos_opt = Some(next_outer_pos);
-      } else {
-        curr_outer_pos_opt = None;
-      }
-
-      curr_player = curr_player.other();
+      game_state.update_outer_pos(tile_global_pos);
+      game_state.curr_player.switch();
     }
   }
 }

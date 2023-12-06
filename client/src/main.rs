@@ -16,6 +16,8 @@ use std::{
 
 use eframe::egui;
 
+const RANDOM_MOVES: bool = true;
+
 #[derive(Default)]
 pub struct Client {
   client_state: ClientState,
@@ -34,7 +36,6 @@ struct ConnectingState {
   port_error: Option<String>,
   connection_error: Option<String>,
   msg_handler: Option<MessageIoHandlerNoBlocking>,
-  this_player: Option<Player>,
 }
 impl Default for ConnectingState {
   fn default() -> Self {
@@ -47,18 +48,23 @@ impl Default for ConnectingState {
       port_error: None,
       connection_error: None,
       msg_handler: None,
-      this_player: None,
     }
   }
+}
+struct WaitingState {
+  msg_handler: MessageIoHandlerNoBlocking,
+  this_player: Player,
 }
 struct PlayingState {
   msg_handler: MessageIoHandlerNoBlocking,
   this_player: Player,
   game_state: GameState,
+  can_place_symbol: bool,
 }
 
 enum ClientState {
   Connecting(ConnectingState),
+  WaitingForGameStart(WaitingState),
   Playing(PlayingState),
 }
 impl Default for ClientState {
@@ -90,12 +96,14 @@ impl eframe::App for Client {
           ui.vertical_centered(|ui| {
             ui.heading("Welcome to UTTT!");
             ui.label("Connect to a server.");
+
             let ip_label = ui.label("IP:");
             ui.text_edit_singleline(&mut cstate.ip_addr)
               .labelled_by(ip_label.id);
             let port_label = ui.label("Port:");
             ui.text_edit_singleline(&mut cstate.port)
               .labelled_by(port_label.id);
+
             if cstate.msg_handler.is_none() && ui.button("Connect").clicked() {
               match Ipv4Addr::from_str(cstate.ip_addr.trim()) {
                 Ok(ip_addr) => {
@@ -142,29 +150,15 @@ impl eframe::App for Client {
               ui.colored_label(egui::Color32::GREEN, "Successfully connected to server.");
               ui.label("Waiting for other player...");
 
-              match cstate.this_player {
-                None => {
-                  if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
-                    let symbol = msg.symbol_assignment();
-                    cstate.this_player = Some(symbol);
-                  }
-                  cstate.msg_handler = Some(msg_handler);
-                  ClientState::Connecting(cstate)
-                }
-                Some(this_player) => {
-                  if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
-                    let starting_player = msg.game_start();
-                    let game_state = GameState::new(starting_player);
-                    ClientState::Playing(PlayingState {
-                      msg_handler,
-                      this_player,
-                      game_state,
-                    })
-                  } else {
-                    cstate.msg_handler = Some(msg_handler);
-                    ClientState::Connecting(cstate)
-                  }
-                }
+              if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
+                let symbol = msg.symbol_assignment();
+                ClientState::WaitingForGameStart(WaitingState {
+                  msg_handler,
+                  this_player: symbol,
+                })
+              } else {
+                cstate.msg_handler = Some(msg_handler);
+                ClientState::Connecting(cstate)
               }
             } else {
               ClientState::Connecting(cstate)
@@ -172,34 +166,53 @@ impl eframe::App for Client {
           })
           .inner
         }
+        ClientState::WaitingForGameStart(mut wstate) => {
+          ui.add_space(50.0);
+          ui.colored_label(egui::Color32::GREEN, "Successfully connected to server.");
+          ui.label("Waiting for other player...");
+
+          if let Some(msg) = wstate
+            .msg_handler
+            .try_read_message::<ServerMessage>()
+            .unwrap()
+          {
+            let starting_player = msg.game_start();
+            let game_state = GameState::new(starting_player);
+            ClientState::Playing(PlayingState {
+              msg_handler: wstate.msg_handler,
+              this_player: wstate.this_player,
+              game_state,
+              can_place_symbol: true,
+            })
+          } else {
+            ClientState::WaitingForGameStart(wstate)
+          }
+        }
         ClientState::Playing(mut pstate) => {
           pstate.msg_handler.try_write_message::<()>(None).unwrap();
+
           if pstate.this_player == pstate.game_state.curr_player {
             ui.label("Your turn.");
           } else {
             ui.label("Opponent's turn.");
           }
-          let clicked_tile = draw_board(ui, &pstate.game_state);
-          if let Some(clicked_tile) = clicked_tile {
-            let mut is_allowed_to_place = pstate.game_state.curr_player == pstate.this_player
-              && pstate
-                .game_state
-                .outer_board
-                .tile(OuterPos::from(clicked_tile))
-                .is_free()
-              && pstate
-                .game_state
-                .outer_board
-                .trivial_tile(clicked_tile)
-                .is_free();
-            if let Some(curr_outer_pos) = pstate.game_state.curr_outer_pos_opt {
-              is_allowed_to_place &= curr_outer_pos == OuterPos::from(clicked_tile);
-            }
-            if is_allowed_to_place {
-              let msg = ClientMessage::PlaceSymbolProposal(clicked_tile);
-              pstate.msg_handler.try_write_message(Some(msg)).unwrap();
+
+          let mut chosen_tile = draw_board(ui, &pstate.game_state);
+
+          if RANDOM_MOVES {
+            chosen_tile = Some(random_tile(&pstate.game_state));
+          }
+
+          if pstate.this_player == pstate.game_state.curr_player && pstate.can_place_symbol {
+            if let Some(chosen_tile) = chosen_tile {
+              if pstate.game_state.could_place_symbol(chosen_tile) {
+                let msg = ClientMessage::PlaceSymbolProposal(chosen_tile);
+                pstate.msg_handler.try_write_message(Some(msg)).unwrap();
+                pstate.can_place_symbol = false;
+              }
             }
           }
+
           if let Some(msg) = pstate
             .msg_handler
             .try_read_message::<ServerMessage>()
@@ -207,23 +220,29 @@ impl eframe::App for Client {
           {
             match msg {
               ServerMessage::PlaceSymbolAccepted(global_pos) => {
-                pstate
+                assert!(pstate
                   .game_state
                   .outer_board
-                  .place_symbol(global_pos, pstate.game_state.curr_player);
-                let next_outer_pos = InnerPos::from(global_pos).as_outer();
-                if pstate.game_state.outer_board.tile(next_outer_pos).is_free() {
-                  pstate.game_state.curr_outer_pos_opt =
-                    Some(InnerPos::from(global_pos).as_outer());
-                } else {
-                  pstate.game_state.curr_outer_pos_opt = None;
-                }
+                  .try_place_symbol(global_pos, pstate.game_state.curr_player));
+
+                pstate.game_state.update_outer_pos(global_pos);
                 pstate.game_state.curr_player.switch();
+                pstate.can_place_symbol = true;
+
+                if !pstate.game_state.outer_board.board_state().is_placeable() {
+                  ClientState::WaitingForGameStart(WaitingState {
+                    msg_handler: pstate.msg_handler,
+                    this_player: pstate.this_player,
+                  })
+                } else {
+                  ClientState::Playing(pstate)
+                }
               }
-              _ => panic!(),
+              _ => panic!("unexpected message: {:?}", msg),
             }
+          } else {
+            ClientState::Playing(pstate)
           }
-          ClientState::Playing(pstate)
         }
       }
     });
@@ -294,11 +313,7 @@ fn draw_board(ui: &mut egui::Ui, game_state: &GameState) -> Option<GlobalPos> {
         ),
         Vec2::splat(inner_board_size),
       );
-
       let inner_board = game_state.outer_board.tile(OuterPos::new(xouter, youter));
-      if let TileBoardState::Won(p) = inner_board.board_state() {
-        draw_symbol(&painter, inner_rect, p);
-      }
 
       for yinner in 0..3 {
         for xinner in 0..3 {
@@ -311,21 +326,19 @@ fn draw_board(ui: &mut egui::Ui, game_state: &GameState) -> Option<GlobalPos> {
           );
           let tile = inner_board.tile(InnerPos::new(xinner, yinner));
 
-          let unhovered_color = match game_state.curr_outer_pos_opt {
+          let mut tile_color = match game_state.curr_outer_pos_opt {
             Some(curr_outer_pos) if curr_outer_pos == OuterPos::new(xouter, youter) => {
-              player_color(game_state.curr_player)
+              lightened_color(player_color(game_state.curr_player), 100)
             }
             _ => Color32::DARK_GRAY,
           };
 
-          let tile_color = ui.ctx().input(|r| {
-            r.pointer
-              .hover_pos()
-              .map(|pos| match tile_rect.contains(pos) {
-                true => Color32::WHITE,
-                false => unhovered_color,
-              })
-              .unwrap_or(unhovered_color)
+          ui.ctx().input(|r| {
+            if let Some(hover_pos) = r.pointer.hover_pos() {
+              if tile_rect.contains(hover_pos) {
+                tile_color = lightened_color(tile_color, 100);
+              }
+            }
           });
           painter.rect_filled(tile_rect, 0.0, tile_color);
 
@@ -343,6 +356,10 @@ fn draw_board(ui: &mut egui::Ui, game_state: &GameState) -> Option<GlobalPos> {
           }
         }
       }
+
+      if let TileBoardState::Won(p) = inner_board.board_state() {
+        draw_symbol(&painter, inner_rect, p);
+      }
     }
   }
   clicked_tile
@@ -354,4 +371,40 @@ fn player_color(player: Player) -> egui::Color32 {
     Player::Cross => Color32::RED,
     Player::Circle => Color32::BLUE,
   }
+}
+
+fn lightened_color(color: egui::Color32, amount: u8) -> egui::Color32 {
+  egui::Color32::from_rgb(
+    color.r().saturating_add(amount),
+    color.g().saturating_add(amount),
+    color.b().saturating_add(amount),
+  )
+}
+
+fn random_tile(game_state: &GameState) -> GlobalPos {
+  use rand::Rng;
+  let mut rng = rand::thread_rng();
+  let outer_pos = game_state.curr_outer_pos_opt.unwrap_or_else(|| loop {
+    let outer_pos = OuterPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
+    if game_state
+      .outer_board
+      .tile(outer_pos)
+      .board_state()
+      .is_placeable()
+    {
+      break outer_pos;
+    }
+  });
+  let inner_pos = loop {
+    let inner_pos = InnerPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
+    if game_state
+      .outer_board
+      .tile(outer_pos)
+      .tile(inner_pos)
+      .is_free()
+    {
+      break inner_pos;
+    }
+  };
+  GlobalPos::from((outer_pos, inner_pos))
 }

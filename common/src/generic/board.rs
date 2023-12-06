@@ -18,23 +18,20 @@ pub struct GenericBoard<TileType> {
 // (needed because trait methods can't be private)
 #[allow(private_bounds)]
 impl<TileType: TileTrait> GenericBoard<TileType> {
-  pub fn tile(&self, pos: impl Into<Pos>) -> &TileType {
-    BoardTrait::tile(self, pos.into())
-  }
-
   pub fn board_state(&self) -> TileBoardState {
     BoardTrait::board_state(self)
   }
-
-  pub fn is_free(&self) -> bool {
-    self.board_state.is_free()
+  pub fn tile(&self, pos: impl Into<Pos>) -> &TileType {
+    BoardTrait::tile(self, pos.into())
   }
-
   pub fn trivial_tile(&self, pos_iter: impl IntoIterator<Item = Pos>) -> TrivialTile {
     BoardTrait::trivial_tile(self, pos_iter.into_iter())
   }
-  pub fn place_symbol(&mut self, pos: impl IntoIterator<Item = Pos>, symbol: Player) {
-    BoardTrait::place_symbol(self, pos.into_iter(), symbol)
+  pub fn could_place_symbol(&self, pos: impl IntoIterator<Item = Pos>) -> bool {
+    BoardTrait::could_place_symbol(self, pos.into_iter())
+  }
+  pub fn try_place_symbol(&mut self, pos: impl IntoIterator<Item = Pos>, symbol: Player) -> bool {
+    BoardTrait::try_place_symbol(self, pos.into_iter(), symbol)
   }
 }
 
@@ -57,12 +54,26 @@ trait BoardTrait {
     TileTrait::trivial_tile(self.tile(local_pos), pos_iter)
   }
 
+  fn could_place_symbol(&self, mut pos_iter: impl Iterator<Item = Pos>) -> bool {
+    let local_pos = pos_iter.next().expect("ran out of positions");
+
+    self.board_state().is_placeable()
+      && TileTrait::could_place_symbol(self.tile(local_pos), pos_iter)
+  }
+
   /// Places a symbol on the given trivial tile, by recursively walking the board hierarchy and
   /// updating the state of the `TrivialTile` and the hierarchy of super states.
-  fn place_symbol(&mut self, mut pos_iter: impl Iterator<Item = Pos>, symbol: Player) {
+  fn try_place_symbol(&mut self, mut pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool {
     let local_pos = pos_iter.next().expect("ran out of positions");
-    TileTrait::place_symbol(self.tile_mut(local_pos), pos_iter, symbol);
-    self.update_super_states(local_pos);
+
+    if self.board_state().is_placeable()
+      && TileTrait::try_place_symbol(self.tile_mut(local_pos), pos_iter, symbol)
+    {
+      self.update_super_states(local_pos);
+      true
+    } else {
+      false
+    }
   }
 
   /// Updates the local super states (line and board states), after a tile at the given pos has changed.
@@ -114,9 +125,10 @@ impl<TileType: TileTrait> BoardTrait for GenericBoard<TileType> {
 /// Trait to allow recursion on inductive tile hierarchy.
 trait TileTrait {
   fn tile_state(&self) -> TileBoardState;
-
   fn trivial_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile;
-  fn place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: Player);
+
+  fn could_place_symbol(&self, pos_iter: impl Iterator<Item = Pos>) -> bool;
+  fn try_place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool;
 }
 
 /// Base case of the inductive tile hierarchy.
@@ -129,9 +141,19 @@ impl TileTrait for TrivialTile {
     assert!(pos_iter.next().is_none());
     *self
   }
-  fn place_symbol(&mut self, mut pos_iter: impl Iterator<Item = Pos>, symbol: Player) {
+
+  fn could_place_symbol(&self, mut pos_iter: impl Iterator<Item = Pos>) -> bool {
     assert!(pos_iter.next().is_none());
-    *self = TrivialTile::Won(symbol);
+    self.is_free()
+  }
+  fn try_place_symbol(&mut self, mut pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool {
+    assert!(pos_iter.next().is_none());
+    if self.is_free() {
+      *self = TrivialTile::Won(symbol);
+      true
+    } else {
+      false
+    }
   }
 }
 
@@ -143,8 +165,12 @@ impl<BoardType: BoardTrait> TileTrait for BoardType {
   fn trivial_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile {
     BoardTrait::trivial_tile(self, pos_iter)
   }
-  fn place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: Player) {
-    BoardTrait::place_symbol(self, pos_iter, symbol)
+
+  fn could_place_symbol(&self, pos_iter: impl Iterator<Item = Pos>) -> bool {
+    BoardTrait::could_place_symbol(self, pos_iter)
+  }
+  fn try_place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool {
+    BoardTrait::try_place_symbol(self, pos_iter, symbol)
   }
 }
 
@@ -168,6 +194,9 @@ impl TileBoardState {
   }
   pub fn is_drawn(self) -> bool {
     matches!(self, Self::Drawn)
+  }
+  pub fn is_placeable(self) -> bool {
+    !self.is_won()
   }
 }
 
@@ -224,7 +253,7 @@ mod test {
       (Pos::new(2, 2), Player::Circle),
     ];
     for (pos, sym) in moves {
-      board.place_symbol(pos.iter(), sym);
+      assert!(board.try_place_symbol(pos.iter(), sym));
     }
     assert_eq!(board.board_state, TileBoardState::Drawn);
   }
