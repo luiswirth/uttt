@@ -1,14 +1,12 @@
 use common::{
-  generic::board::TileBoardState,
   specific::{
     game::GameState,
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   },
-  Player, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
+  PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
 };
 
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
-use tracing::{error, info};
 
 pub struct Server {
   /// sorted according to `Player`
@@ -16,7 +14,7 @@ pub struct Server {
 }
 
 impl Server {
-  pub fn new() -> eyre::Result<Self> {
+  pub fn connect() -> eyre::Result<Self> {
     let ip_addr = loop {
       println!(
         "Enter IP address (press enter for default = {}):",
@@ -28,13 +26,13 @@ impl Server {
 
       match ip_addr.is_empty() {
         true => {
-          info!("Using default ip address {}", DEFAULT_IP);
+          println!("Using default ip address {}", DEFAULT_IP);
           break DEFAULT_IP;
         }
         false => match ip_addr.parse::<Ipv4Addr>() {
           Ok(ip_addr) => break ip_addr,
           Err(e) => {
-            error!("Parsing ip address failed: {}", e);
+            println!("Parsing ip address failed: {}", e);
             continue;
           }
         },
@@ -48,13 +46,13 @@ impl Server {
 
       match port.is_empty() {
         true => {
-          info!("Using default port {}", DEFAULT_PORT);
+          println!("Using default port {}", DEFAULT_PORT);
           break DEFAULT_PORT;
         }
         false => match port.parse::<u16>() {
           Ok(port) => break port,
           Err(e) => {
-            error!("Parsing port failed: {}", e);
+            println!("Parsing port failed: {}", e);
             continue;
           }
         },
@@ -63,15 +61,15 @@ impl Server {
     let socket_addr = SocketAddrV4::new(ip_addr, port);
     let listener = TcpListener::bind(socket_addr)?;
 
-    let mut curr_player: Player = rand::random();
+    let mut curr_player: PlayerSymbol = rand::random();
 
-    info!("Waiting for connections...");
-    let mut streams: Vec<(Player, TcpStream)> = listener
+    println!("Waiting for connections...");
+    let mut streams: Vec<(PlayerSymbol, TcpStream)> = listener
       .incoming()
       .filter_map(|stream| match stream {
         Ok(s) => Some(s),
         Err(e) => {
-          error!("Connecting to TcpStream failed: {}", e);
+          println!("Connecting to TcpStream failed: {}", e);
           None
         }
       })
@@ -80,8 +78,8 @@ impl Server {
       .map(|(i, mut stream)| {
         send_message_to_stream(&ServerMessage::SymbolAssignment(curr_player), &mut stream)
           .expect("sending message failed");
-        info!("Player{} connected {}", i, stream.peer_addr().unwrap());
-        info!("Player{} was assigned {:?}", i, curr_player);
+        println!("Player{} connected {}", i, stream.peer_addr().unwrap());
+        println!("Player{} was assigned {:?}", i, curr_player);
 
         let r = (curr_player, stream);
         curr_player.switch();
@@ -100,61 +98,51 @@ impl Server {
     Ok(Self { streams })
   }
 
-  fn play_game(&mut self) -> eyre::Result<()> {
-    let starting_player: Player = rand::random();
+  fn run(&mut self) {
+    loop {
+      self.play_game();
+    }
+  }
+
+  fn play_game(&mut self) {
+    let starting_player: PlayerSymbol = rand::random();
     let mut game_state = GameState::new(starting_player);
 
-    tracing::info!("New game started.");
-    self.broadcast_message(&ServerMessage::GameStart(starting_player))?;
+    self
+      .broadcast_message(&ServerMessage::GameStart(starting_player))
+      .unwrap();
 
     // main game loop
-    loop {
+    while !game_state.winning_state().is_decided() {
       let tile_global_pos = self
-        .receive_message(game_state.curr_player)?
+        .receive_message(game_state.current_player())
+        .unwrap()
         .place_symbol_proposal();
-      if game_state
-        .outer_board
-        .try_place_symbol(tile_global_pos, game_state.curr_player)
-      {
-        self.broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))?;
+
+      if game_state.try_play_move(tile_global_pos) {
+        self
+          .broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))
+          .unwrap();
       } else {
-        self.broadcast_message(&ServerMessage::PlaceSymbolRejected)?;
-        println!(
-          "is placeable: {}",
-          game_state.could_place_symbol(tile_global_pos)
-        );
+        self
+          .broadcast_message(&ServerMessage::PlaceSymbolRejected)
+          .unwrap();
         panic!("invalid move! {:?}", tile_global_pos);
       }
-      info!(
-        "{:?} placed symbol at {:?}",
-        game_state.curr_player, tile_global_pos
-      );
-
-      match game_state.outer_board.board_state() {
-        TileBoardState::Won(winner) => {
-          assert_eq!(winner, game_state.curr_player);
-          info!("{:?} won the game.", winner);
-          break Ok(());
-        }
-        TileBoardState::Drawn => {
-          info!("The game ended in a draw.");
-          break Ok(());
-        }
-        TileBoardState::Free => {}
-      }
-
-      game_state.update_outer_pos(tile_global_pos);
-      game_state.curr_player.switch();
     }
   }
 }
 
 impl Server {
-  pub fn stream_mut(&mut self, player: Player) -> &mut TcpStream {
+  pub fn stream_mut(&mut self, player: PlayerSymbol) -> &mut TcpStream {
     &mut self.streams[player.idx()]
   }
 
-  pub fn send_message(&mut self, message: &ServerMessage, player: Player) -> eyre::Result<()> {
+  pub fn send_message(
+    &mut self,
+    message: &ServerMessage,
+    player: PlayerSymbol,
+  ) -> eyre::Result<()> {
     send_message_to_stream(message, self.stream_mut(player))?;
     Ok(())
   }
@@ -166,18 +154,16 @@ impl Server {
     Ok(())
   }
 
-  pub fn receive_message(&mut self, player: Player) -> std::io::Result<ClientMessage> {
+  pub fn receive_message(&mut self, player: PlayerSymbol) -> std::io::Result<ClientMessage> {
     receive_message_from_stream(self.stream_mut(player))
   }
 }
 
-fn main() -> eyre::Result<()> {
+fn main() {
   tracing_subscriber::fmt()
     .with_max_level(tracing::Level::INFO)
     .init();
 
-  let mut server = Server::new()?;
-  loop {
-    server.play_game()?;
-  }
+  let mut server = Server::connect().unwrap();
+  server.run()
 }

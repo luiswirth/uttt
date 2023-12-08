@@ -1,4 +1,4 @@
-use crate::{generic::line::LineState, Player};
+use crate::{generic::line::LineState, PlayerSymbol};
 
 use super::{line::Line, pos::Pos};
 
@@ -30,7 +30,11 @@ impl<TileType: TileTrait> GenericBoard<TileType> {
   pub fn could_place_symbol(&self, pos: impl IntoIterator<Item = Pos>) -> bool {
     BoardTrait::could_place_symbol(self, pos.into_iter())
   }
-  pub fn try_place_symbol(&mut self, pos: impl IntoIterator<Item = Pos>, symbol: Player) -> bool {
+  pub fn try_place_symbol(
+    &mut self,
+    pos: impl IntoIterator<Item = Pos>,
+    symbol: PlayerSymbol,
+  ) -> bool {
     BoardTrait::try_place_symbol(self, pos.into_iter(), symbol)
   }
 }
@@ -63,7 +67,11 @@ trait BoardTrait {
 
   /// Places a symbol on the given trivial tile, by recursively walking the board hierarchy and
   /// updating the state of the `TrivialTile` and the hierarchy of super states.
-  fn try_place_symbol(&mut self, mut pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool {
+  fn try_place_symbol(
+    &mut self,
+    mut pos_iter: impl Iterator<Item = Pos>,
+    symbol: PlayerSymbol,
+  ) -> bool {
     let local_pos = pos_iter.next().expect("ran out of positions");
 
     if self.board_state().is_placeable()
@@ -128,7 +136,8 @@ trait TileTrait {
   fn trivial_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile;
 
   fn could_place_symbol(&self, pos_iter: impl Iterator<Item = Pos>) -> bool;
-  fn try_place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool;
+  fn try_place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: PlayerSymbol)
+    -> bool;
 }
 
 /// Base case of the inductive tile hierarchy.
@@ -146,7 +155,11 @@ impl TileTrait for TrivialTile {
     assert!(pos_iter.next().is_none());
     self.is_free()
   }
-  fn try_place_symbol(&mut self, mut pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool {
+  fn try_place_symbol(
+    &mut self,
+    mut pos_iter: impl Iterator<Item = Pos>,
+    symbol: PlayerSymbol,
+  ) -> bool {
     assert!(pos_iter.next().is_none());
     if self.is_free() {
       *self = TrivialTile::Won(symbol);
@@ -169,7 +182,11 @@ impl<BoardType: BoardTrait> TileTrait for BoardType {
   fn could_place_symbol(&self, pos_iter: impl Iterator<Item = Pos>) -> bool {
     BoardTrait::could_place_symbol(self, pos_iter)
   }
-  fn try_place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: Player) -> bool {
+  fn try_place_symbol(
+    &mut self,
+    pos_iter: impl Iterator<Item = Pos>,
+    symbol: PlayerSymbol,
+  ) -> bool {
     BoardTrait::try_place_symbol(self, pos_iter, symbol)
   }
 }
@@ -181,7 +198,7 @@ impl<BoardType: BoardTrait> TileTrait for BoardType {
 pub enum TileBoardState {
   #[default]
   Free,
-  Won(Player),
+  Won(PlayerSymbol),
   Drawn,
 }
 
@@ -195,6 +212,9 @@ impl TileBoardState {
   pub fn is_drawn(self) -> bool {
     matches!(self, Self::Drawn)
   }
+  pub fn is_decided(self) -> bool {
+    self.is_won() || self.is_drawn()
+  }
   pub fn is_placeable(self) -> bool {
     !self.is_won()
   }
@@ -205,7 +225,7 @@ impl TileBoardState {
 pub enum TrivialTile {
   #[default]
   Free,
-  Won(Player),
+  Won(PlayerSymbol),
 }
 
 impl TrivialTile {
@@ -231,7 +251,7 @@ mod test {
   use super::TrivialBoard;
   use crate::{
     generic::{board::TileBoardState, pos::Pos},
-    Player,
+    PlayerSymbol,
   };
 
   // XOO
@@ -242,15 +262,15 @@ mod test {
   fn check_draw_detection() {
     let mut board = TrivialBoard::default();
     let moves = vec![
-      (Pos::new(0, 0), Player::Cross),
-      (Pos::new(1, 0), Player::Circle),
-      (Pos::new(2, 0), Player::Circle),
-      (Pos::new(0, 1), Player::Circle),
-      (Pos::new(1, 1), Player::Cross),
-      (Pos::new(2, 1), Player::Cross),
-      //(Pos::new(0, 2), Player::Empty),
-      (Pos::new(1, 2), Player::Cross),
-      (Pos::new(2, 2), Player::Circle),
+      (Pos::new(0, 0), PlayerSymbol::X),
+      (Pos::new(1, 0), PlayerSymbol::O),
+      (Pos::new(2, 0), PlayerSymbol::O),
+      (Pos::new(0, 1), PlayerSymbol::O),
+      (Pos::new(1, 1), PlayerSymbol::X),
+      (Pos::new(2, 1), PlayerSymbol::X),
+      //(Pos::new(0, 2), PlayerSymbol::Empty),
+      (Pos::new(1, 2), PlayerSymbol::X),
+      (Pos::new(2, 2), PlayerSymbol::O),
     ];
     for (pos, sym) in moves {
       assert!(board.try_place_symbol(pos.iter(), sym));

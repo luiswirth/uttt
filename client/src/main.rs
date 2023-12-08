@@ -1,11 +1,13 @@
+pub mod board_ui;
+pub mod util;
+
+use crate::{board_ui::build_board_ui, util::choose_random_tile};
 use common::{
-  generic::board::{TileBoardState, TrivialTile},
   specific::{
     game::GameState,
     message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
-    pos::{GlobalPos, InnerPos, OuterPos},
   },
-  Player, DEFAULT_IP, DEFAULT_PORT,
+  PlayerSymbol, DEFAULT_IP, DEFAULT_PORT,
 };
 
 use std::{
@@ -18,11 +20,16 @@ use eframe::egui;
 
 const RANDOM_MOVES: bool = true;
 
-#[derive(Default)]
-pub struct Client {
-  client_state: ClientState,
+enum Client {
+  Connecting(ConnectingState),
+  WaitingForGameStart(WaitingState),
+  Playing(PlayingState),
 }
-
+impl Default for Client {
+  fn default() -> Self {
+    Self::Connecting(Default::default())
+  }
+}
 impl Client {
   pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
     Self::default()
@@ -53,24 +60,13 @@ impl Default for ConnectingState {
 }
 struct WaitingState {
   msg_handler: MessageIoHandlerNoBlocking,
-  this_player: Player,
+  this_player: PlayerSymbol,
 }
 struct PlayingState {
   msg_handler: MessageIoHandlerNoBlocking,
-  this_player: Player,
+  this_player: PlayerSymbol,
   game_state: GameState,
   can_place_symbol: bool,
-}
-
-enum ClientState {
-  Connecting(ConnectingState),
-  WaitingForGameStart(WaitingState),
-  Playing(PlayingState),
-}
-impl Default for ClientState {
-  fn default() -> Self {
-    Self::Connecting(Default::default())
-  }
 }
 
 impl eframe::App for Client {
@@ -86,166 +82,172 @@ impl eframe::App for Client {
       );
       ctx.set_style(style);
 
-      self.client_state = match mem::take(&mut self.client_state) {
-        ClientState::Connecting(mut cstate) => {
-          if let Some(ref mut msg_handler) = cstate.msg_handler {
-            msg_handler.try_write_message::<()>(None).unwrap();
-          }
+      self.update_state(ui);
+    });
+  }
+}
 
-          ui.add_space(50.0);
-          ui.vertical_centered(|ui| {
-            ui.heading("Welcome to UTTT!");
-            ui.label("Connect to a server.");
+impl Client {
+  fn update_state(&mut self, ui: &mut egui::Ui) {
+    *self = match mem::take(self) {
+      Client::Connecting(state) => Self::update_connecting(state, ui),
+      Client::WaitingForGameStart(state) => Self::update_waiting(state, ui),
+      Client::Playing(state) => Self::update_playing(state, ui),
+    }
+  }
 
-            let ip_label = ui.label("IP:");
-            ui.text_edit_singleline(&mut cstate.ip_addr)
-              .labelled_by(ip_label.id);
-            let port_label = ui.label("Port:");
-            ui.text_edit_singleline(&mut cstate.port)
-              .labelled_by(port_label.id);
+  fn update_connecting(mut state: ConnectingState, ui: &mut egui::Ui) -> Self {
+    if let Some(ref mut msg_handler) = state.msg_handler {
+      msg_handler.try_write_message::<()>(None).unwrap();
+    }
 
-            if cstate.msg_handler.is_none() && ui.button("Connect").clicked() {
-              match Ipv4Addr::from_str(cstate.ip_addr.trim()) {
-                Ok(ip_addr) => {
-                  cstate.ip_addr_error = None;
-                  match cstate.port.trim().parse::<u16>() {
-                    Ok(port) => {
-                      cstate.port_error = None;
-                      let socket_addr = SocketAddrV4::new(ip_addr, port);
-                      match TcpStream::connect(socket_addr) {
-                        Ok(tcp_stream) => {
-                          cstate.connection_error = None;
-                          tcp_stream.set_nonblocking(true).unwrap();
-                          let new_msg_handler = MessageIoHandlerNoBlocking::new(tcp_stream);
-                          cstate.msg_handler = Some(new_msg_handler);
-                        }
-                        Err(e) => {
-                          cstate.connection_error = Some(e.to_string());
-                        }
-                      }
-                    }
-                    Err(e) => {
-                      cstate.port_error = Some(e.to_string());
-                    }
+    ui.add_space(50.0);
+    ui.vertical_centered(|ui| {
+      ui.heading("Welcome to UTTT!");
+      ui.label("Connect to a server.");
+
+      let ip_label = ui.label("IP:");
+      ui.text_edit_singleline(&mut state.ip_addr)
+        .labelled_by(ip_label.id);
+      let port_label = ui.label("Port:");
+      ui.text_edit_singleline(&mut state.port)
+        .labelled_by(port_label.id);
+
+      if state.msg_handler.is_none() && ui.button("Connect").clicked() {
+        match Ipv4Addr::from_str(state.ip_addr.trim()) {
+          Ok(ip_addr) => {
+            state.ip_addr_error = None;
+            match state.port.trim().parse::<u16>() {
+              Ok(port) => {
+                state.port_error = None;
+                let socket_addr = SocketAddrV4::new(ip_addr, port);
+                match TcpStream::connect(socket_addr) {
+                  Ok(tcp_stream) => {
+                    state.connection_error = None;
+                    tcp_stream.set_nonblocking(true).unwrap();
+                    let new_msg_handler = MessageIoHandlerNoBlocking::new(tcp_stream);
+                    state.msg_handler = Some(new_msg_handler);
+                  }
+                  Err(e) => {
+                    state.connection_error = Some(e.to_string());
                   }
                 }
-                Err(e) => {
-                  cstate.ip_addr_error = Some(e.to_string());
-                }
               }
-            }
-            if let Some(e) = cstate.ip_addr_error.as_ref() {
-              ui.colored_label(egui::Color32::RED, format!("Invalid IP address: {}", e));
-            }
-            if let Some(e) = cstate.port_error.as_ref() {
-              ui.colored_label(egui::Color32::RED, format!("Invalid port: {}", e));
-            }
-            if let Some(e) = cstate.connection_error.as_ref() {
-              ui.colored_label(
-                egui::Color32::RED,
-                format!("Failed to connect to server: {}", e),
-              );
-            }
-            if let Some(mut msg_handler) = cstate.msg_handler {
-              ui.colored_label(egui::Color32::GREEN, "Successfully connected to server.");
-              ui.label("Waiting for other player...");
-
-              if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
-                let symbol = msg.symbol_assignment();
-                ClientState::WaitingForGameStart(WaitingState {
-                  msg_handler,
-                  this_player: symbol,
-                })
-              } else {
-                cstate.msg_handler = Some(msg_handler);
-                ClientState::Connecting(cstate)
-              }
-            } else {
-              ClientState::Connecting(cstate)
-            }
-          })
-          .inner
-        }
-        ClientState::WaitingForGameStart(mut wstate) => {
-          ui.add_space(50.0);
-          ui.colored_label(egui::Color32::GREEN, "Successfully connected to server.");
-          ui.label("Waiting for other player...");
-
-          if let Some(msg) = wstate
-            .msg_handler
-            .try_read_message::<ServerMessage>()
-            .unwrap()
-          {
-            let starting_player = msg.game_start();
-            let game_state = GameState::new(starting_player);
-            ClientState::Playing(PlayingState {
-              msg_handler: wstate.msg_handler,
-              this_player: wstate.this_player,
-              game_state,
-              can_place_symbol: true,
-            })
-          } else {
-            ClientState::WaitingForGameStart(wstate)
-          }
-        }
-        ClientState::Playing(mut pstate) => {
-          pstate.msg_handler.try_write_message::<()>(None).unwrap();
-
-          if pstate.this_player == pstate.game_state.curr_player {
-            ui.label("Your turn.");
-          } else {
-            ui.label("Opponent's turn.");
-          }
-
-          let mut chosen_tile = draw_board(ui, &pstate.game_state);
-
-          if RANDOM_MOVES {
-            chosen_tile = Some(random_tile(&pstate.game_state));
-          }
-
-          if pstate.this_player == pstate.game_state.curr_player && pstate.can_place_symbol {
-            if let Some(chosen_tile) = chosen_tile {
-              if pstate.game_state.could_place_symbol(chosen_tile) {
-                let msg = ClientMessage::PlaceSymbolProposal(chosen_tile);
-                pstate.msg_handler.try_write_message(Some(msg)).unwrap();
-                pstate.can_place_symbol = false;
+              Err(e) => {
+                state.port_error = Some(e.to_string());
               }
             }
           }
-
-          if let Some(msg) = pstate
-            .msg_handler
-            .try_read_message::<ServerMessage>()
-            .unwrap()
-          {
-            match msg {
-              ServerMessage::PlaceSymbolAccepted(global_pos) => {
-                assert!(pstate
-                  .game_state
-                  .outer_board
-                  .try_place_symbol(global_pos, pstate.game_state.curr_player));
-
-                pstate.game_state.update_outer_pos(global_pos);
-                pstate.game_state.curr_player.switch();
-                pstate.can_place_symbol = true;
-
-                if !pstate.game_state.outer_board.board_state().is_placeable() {
-                  ClientState::WaitingForGameStart(WaitingState {
-                    msg_handler: pstate.msg_handler,
-                    this_player: pstate.this_player,
-                  })
-                } else {
-                  ClientState::Playing(pstate)
-                }
-              }
-              _ => panic!("unexpected message: {:?}", msg),
-            }
-          } else {
-            ClientState::Playing(pstate)
+          Err(e) => {
+            state.ip_addr_error = Some(e.to_string());
           }
         }
       }
-    });
+      if let Some(e) = state.ip_addr_error.as_ref() {
+        ui.colored_label(egui::Color32::RED, format!("Invalid IP address: {}", e));
+      }
+      if let Some(e) = state.port_error.as_ref() {
+        ui.colored_label(egui::Color32::RED, format!("Invalid port: {}", e));
+      }
+      if let Some(e) = state.connection_error.as_ref() {
+        ui.colored_label(
+          egui::Color32::RED,
+          format!("Failed to connect to server: {}", e),
+        );
+      }
+      if let Some(mut msg_handler) = state.msg_handler {
+        ui.colored_label(egui::Color32::GREEN, "Successfully connected to server.");
+        ui.label("Waiting for other player...");
+
+        if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
+          let symbol = msg.symbol_assignment();
+          Client::WaitingForGameStart(WaitingState {
+            msg_handler,
+            this_player: symbol,
+          })
+        } else {
+          state.msg_handler = Some(msg_handler);
+          Client::Connecting(state)
+        }
+      } else {
+        Client::Connecting(state)
+      }
+    })
+    .inner
+  }
+
+  fn update_waiting(mut state: WaitingState, ui: &mut egui::Ui) -> Self {
+    ui.add_space(50.0);
+    ui.colored_label(egui::Color32::GREEN, "Successfully connected to server.");
+    ui.label("Waiting for other player...");
+
+    if let Some(msg) = state
+      .msg_handler
+      .try_read_message::<ServerMessage>()
+      .unwrap()
+    {
+      let starting_player = msg.game_start();
+      let game_state = GameState::new(starting_player);
+      Client::Playing(PlayingState {
+        msg_handler: state.msg_handler,
+        this_player: state.this_player,
+        game_state,
+        can_place_symbol: true,
+      })
+    } else {
+      Client::WaitingForGameStart(state)
+    }
+  }
+
+  fn update_playing(mut state: PlayingState, ui: &mut egui::Ui) -> Self {
+    state.msg_handler.try_write_message::<()>(None).unwrap();
+
+    if state.this_player == state.game_state.current_player() {
+      ui.label("Your turn.");
+    } else {
+      ui.label("Opponent's turn.");
+    }
+
+    let mut chosen_tile = build_board_ui(ui, &state.game_state);
+
+    if RANDOM_MOVES {
+      chosen_tile = Some(choose_random_tile(&state.game_state));
+    }
+
+    if state.this_player == state.game_state.current_player() && state.can_place_symbol {
+      if let Some(chosen_tile) = chosen_tile {
+        if state.game_state.could_play_move(chosen_tile) {
+          let msg = ClientMessage::PlaceSymbolProposal(chosen_tile);
+          state.msg_handler.try_write_message(Some(msg)).unwrap();
+          state.can_place_symbol = false;
+        }
+      }
+    }
+
+    if let Some(msg) = state
+      .msg_handler
+      .try_read_message::<ServerMessage>()
+      .unwrap()
+    {
+      match msg {
+        ServerMessage::PlaceSymbolAccepted(global_pos) => {
+          assert!(state.game_state.try_play_move(global_pos));
+          state.can_place_symbol = true;
+
+          if state.game_state.winning_state().is_decided() {
+            Client::WaitingForGameStart(WaitingState {
+              msg_handler: state.msg_handler,
+              this_player: state.this_player,
+            })
+          } else {
+            Client::Playing(state)
+          }
+        }
+        _ => panic!("unexpected message: {:?}", msg),
+      }
+    } else {
+      Client::Playing(state)
+    }
   }
 }
 
@@ -264,147 +266,4 @@ fn main() {
     Box::new(|cc| Box::new(Client::new(cc))),
   )
   .unwrap();
-}
-
-fn draw_board(ui: &mut egui::Ui, game_state: &GameState) -> Option<GlobalPos> {
-  use egui::{pos2, vec2, Color32, Painter, Rect, Sense, Stroke, Vec2};
-
-  let available_size = Vec2::splat(ui.available_size().min_elem());
-  let (response, painter) = ui.allocate_painter(available_size, Sense::click());
-
-  let draw_cross = |painter: &Painter, rect: Rect, stroke: Stroke| {
-    let offset = rect.width() / 8.0;
-    let a = rect.left_top() + Vec2::splat(offset);
-    let b = rect.right_bottom() - Vec2::splat(offset);
-    painter.line_segment([a, b], stroke);
-    let a = rect.right_top() + vec2(-offset, offset);
-    let b = rect.left_bottom() + vec2(offset, -offset);
-    painter.line_segment([a, b], stroke);
-  };
-
-  let draw_circle = |painter: &Painter, rect: Rect, stroke: Stroke| {
-    let center = rect.center();
-    let radius = rect.width() / 2.0 / 1.5;
-    painter.circle_stroke(center, radius, stroke);
-  };
-
-  let draw_symbol = |painter: &Painter, rect: Rect, symbol: Player| {
-    let stroke = Stroke::new(5.0, player_color(symbol));
-    match symbol {
-      Player::Cross => draw_cross(painter, rect, stroke),
-      Player::Circle => draw_circle(painter, rect, stroke),
-    }
-  };
-
-  let outer_rect = response.rect;
-
-  let inner_board_padding = 10.0;
-  let inner_board_size = (outer_rect.width() - 2.0 * inner_board_padding) / 3.0;
-  let tile_padding = 5.0;
-  let tile_size = (inner_board_size - 2.0 * tile_padding) / 3.0;
-
-  let mut clicked_tile = None;
-  for youter in 0..3 {
-    for xouter in 0..3 {
-      let inner_rect = Rect::from_min_size(
-        pos2(
-          outer_rect.left() + xouter as f32 * (inner_board_size + inner_board_padding),
-          outer_rect.top() + youter as f32 * (inner_board_size + inner_board_padding),
-        ),
-        Vec2::splat(inner_board_size),
-      );
-      let inner_board = game_state.outer_board.tile(OuterPos::new(xouter, youter));
-
-      for yinner in 0..3 {
-        for xinner in 0..3 {
-          let tile_rect = Rect::from_min_size(
-            pos2(
-              inner_rect.left() + xinner as f32 * (tile_size + tile_padding),
-              inner_rect.top() + yinner as f32 * (tile_size + tile_padding),
-            ),
-            Vec2::splat(tile_size),
-          );
-          let tile = inner_board.tile(InnerPos::new(xinner, yinner));
-
-          let mut tile_color = match game_state.curr_outer_pos_opt {
-            Some(curr_outer_pos) if curr_outer_pos == OuterPos::new(xouter, youter) => {
-              lightened_color(player_color(game_state.curr_player), 100)
-            }
-            _ => Color32::DARK_GRAY,
-          };
-
-          ui.ctx().input(|r| {
-            if let Some(hover_pos) = r.pointer.hover_pos() {
-              if tile_rect.contains(hover_pos) {
-                tile_color = lightened_color(tile_color, 100);
-              }
-            }
-          });
-          painter.rect_filled(tile_rect, 0.0, tile_color);
-
-          if let TrivialTile::Won(p) = tile {
-            draw_symbol(&painter, tile_rect, *p);
-          }
-
-          if response.clicked()
-            && tile_rect.contains(ui.ctx().input(|r| r.pointer.hover_pos().unwrap()))
-          {
-            clicked_tile = Some(dbg!(GlobalPos::from((
-              OuterPos::new(xouter, youter),
-              InnerPos::new(xinner, yinner),
-            ))));
-          }
-        }
-      }
-
-      if let TileBoardState::Won(p) = inner_board.board_state() {
-        draw_symbol(&painter, inner_rect, p);
-      }
-    }
-  }
-  clicked_tile
-}
-
-fn player_color(player: Player) -> egui::Color32 {
-  use egui::Color32;
-  match player {
-    Player::Cross => Color32::RED,
-    Player::Circle => Color32::BLUE,
-  }
-}
-
-fn lightened_color(color: egui::Color32, amount: u8) -> egui::Color32 {
-  egui::Color32::from_rgb(
-    color.r().saturating_add(amount),
-    color.g().saturating_add(amount),
-    color.b().saturating_add(amount),
-  )
-}
-
-fn random_tile(game_state: &GameState) -> GlobalPos {
-  use rand::Rng;
-  let mut rng = rand::thread_rng();
-  let outer_pos = game_state.curr_outer_pos_opt.unwrap_or_else(|| loop {
-    let outer_pos = OuterPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
-    if game_state
-      .outer_board
-      .tile(outer_pos)
-      .board_state()
-      .is_placeable()
-    {
-      break outer_pos;
-    }
-  });
-  let inner_pos = loop {
-    let inner_pos = InnerPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
-    if game_state
-      .outer_board
-      .tile(outer_pos)
-      .tile(inner_pos)
-      .is_free()
-    {
-      break inner_pos;
-    }
-  };
-  GlobalPos::from((outer_pos, inner_pos))
 }

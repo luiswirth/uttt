@@ -1,4 +1,4 @@
-use crate::Player;
+use crate::PlayerSymbol;
 
 use std::{
   io::{Read, Write},
@@ -15,20 +15,20 @@ const NBYTES_MESSAGE_LENGTH: usize = std::mem::size_of::<MessageLength>();
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerMessage {
-  SymbolAssignment(Player),
-  GameStart(Player),
+  SymbolAssignment(PlayerSymbol),
+  GameStart(PlayerSymbol),
   PlaceSymbolRejected,
   PlaceSymbolAccepted(GlobalPos),
 }
 
 impl ServerMessage {
-  pub fn symbol_assignment(self) -> Player {
+  pub fn symbol_assignment(self) -> PlayerSymbol {
     match self {
       Self::SymbolAssignment(s) => s,
       _ => panic!("expected `SymbolAssignment`, got `{:?}`", self),
     }
   }
-  pub fn game_start(self) -> Player {
+  pub fn game_start(self) -> PlayerSymbol {
     match self {
       Self::GameStart(s) => s,
       _ => panic!("wong message: expected `GameStart`, got `{:?}`", self),

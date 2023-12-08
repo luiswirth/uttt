@@ -1,4 +1,4 @@
-use crate::{Player, LOCAL_BOARD_SIZE};
+use crate::{PlayerSymbol, LOCAL_BOARD_SIZE};
 
 use super::{board::TileBoardState, pos::Pos};
 
@@ -99,8 +99,8 @@ impl Iterator for LineIter {
 pub enum LineState {
   #[default]
   Free,
-  PartiallyWon(Player, u8),
-  Won(Player),
+  PartiallyWon(PlayerSymbol, u8),
+  Won(PlayerSymbol),
   Drawn,
 }
 
