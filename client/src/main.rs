@@ -9,6 +9,7 @@ use common::{
   },
   PlayerSymbol, DEFAULT_IP, DEFAULT_PORT,
 };
+use util::player_color;
 
 use std::{
   mem,
@@ -97,10 +98,6 @@ impl Client {
   }
 
   fn update_connecting(mut state: ConnectingState, ui: &mut egui::Ui) -> Self {
-    if let Some(ref mut msg_handler) = state.msg_handler {
-      msg_handler.try_write_message::<()>(None).unwrap();
-    }
-
     ui.add_space(50.0);
     ui.vertical_centered(|ui| {
       ui.heading("Welcome to UTTT!");
@@ -115,31 +112,25 @@ impl Client {
 
       if state.msg_handler.is_none() && ui.button("Connect").clicked() {
         match Ipv4Addr::from_str(state.ip_addr.trim()) {
+          Err(e) => state.ip_addr_error = Some(e.to_string()),
           Ok(ip_addr) => {
             state.ip_addr_error = None;
             match state.port.trim().parse::<u16>() {
+              Err(e) => state.port_error = Some(e.to_string()),
               Ok(port) => {
                 state.port_error = None;
                 let socket_addr = SocketAddrV4::new(ip_addr, port);
                 match TcpStream::connect(socket_addr) {
+                  Err(e) => state.connection_error = Some(e.to_string()),
                   Ok(tcp_stream) => {
                     state.connection_error = None;
                     tcp_stream.set_nonblocking(true).unwrap();
                     let new_msg_handler = MessageIoHandlerNoBlocking::new(tcp_stream);
                     state.msg_handler = Some(new_msg_handler);
                   }
-                  Err(e) => {
-                    state.connection_error = Some(e.to_string());
-                  }
                 }
               }
-              Err(e) => {
-                state.port_error = Some(e.to_string());
-              }
             }
-          }
-          Err(e) => {
-            state.ip_addr_error = Some(e.to_string());
           }
         }
       }
@@ -202,10 +193,14 @@ impl Client {
   fn update_playing(mut state: PlayingState, ui: &mut egui::Ui) -> Self {
     state.msg_handler.try_write_message::<()>(None).unwrap();
 
+    ui.colored_label(
+      player_color(state.this_player),
+      format!("You have symbol {:?}", state.this_player),
+    );
     if state.this_player == state.game_state.current_player() {
-      ui.label("Your turn.");
+      ui.label("Your turn");
     } else {
-      ui.label("Opponent's turn.");
+      ui.label("Opponents turn.");
     }
 
     let mut chosen_tile = build_board_ui(ui, &state.game_state);

@@ -215,8 +215,11 @@ impl TileBoardState {
   pub fn is_decided(self) -> bool {
     self.is_won() || self.is_drawn()
   }
+
+  // TODO: this is wrong. UTTT works differently.
+  // Every tile is placeable as long as it isn't won or fully drawn.
   pub fn is_placeable(self) -> bool {
-    !self.is_won()
+    !self.is_won() && !self.is_drawn()
   }
 }
 
