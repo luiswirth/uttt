@@ -27,7 +27,6 @@ pub fn choose_random_tile(game_state: &GameState) -> GlobalPos {
   use rand::Rng;
   let mut rng = rand::thread_rng();
   let outer_pos = game_state.current_outer_pos().unwrap_or_else(|| loop {
-    println!("choosing inner board");
     let outer_pos = OuterPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
     if game_state
       .board()
@@ -39,7 +38,6 @@ pub fn choose_random_tile(game_state: &GameState) -> GlobalPos {
     }
   });
   let inner_pos = loop {
-    println!("choosing tile in inner board {:?}", outer_pos);
     let inner_pos = InnerPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
     if game_state.board().tile(outer_pos).tile(inner_pos).is_free() {
       break inner_pos;

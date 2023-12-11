@@ -6,6 +6,8 @@ use std::net::Ipv4Addr;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
+pub const DEBUG: bool = false;
+
 pub const DEFAULT_IP: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
 pub const DEFAULT_PORT: u16 = 42069;
 

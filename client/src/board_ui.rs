@@ -12,40 +12,34 @@ use egui::{pos2, vec2, Color32, Painter, Rect, Sense, Stroke, Vec2};
 use crate::util::{lightened_color, player_color};
 
 /// returns `Some(global_pos)` if a tile was clicked
-pub fn build_board_ui(ui: &mut egui::Ui, game_state: &GameState) -> Option<GlobalPos> {
+pub fn build_board_ui(
+  ui: &mut egui::Ui,
+  game_state: &GameState,
+  this_player: PlayerSymbol,
+) -> Option<GlobalPos> {
   let available_size = Vec2::splat(ui.available_size().min_elem());
   let (response, painter) = ui.allocate_painter(available_size, Sense::click());
 
-  let draw_cross = |painter: &Painter, rect: Rect, stroke: Stroke| {
-    let offset = rect.width() / 8.0;
-    let a = rect.left_top() + Vec2::splat(offset);
-    let b = rect.right_bottom() - Vec2::splat(offset);
-    painter.line_segment([a, b], stroke);
-    let a = rect.right_top() + vec2(-offset, offset);
-    let b = rect.left_bottom() + vec2(offset, -offset);
-    painter.line_segment([a, b], stroke);
-  };
+  let full_rect = response.rect;
 
-  let draw_circle = |painter: &Painter, rect: Rect, stroke: Stroke| {
-    let center = rect.center();
-    let radius = rect.width() / 2.0 / 1.5;
-    painter.circle_stroke(center, radius, stroke);
-  };
-
-  let draw_symbol = |painter: &Painter, rect: Rect, symbol: PlayerSymbol| {
-    let stroke = Stroke::new(5.0, player_color(symbol));
-    match symbol {
-      PlayerSymbol::X => draw_cross(painter, rect, stroke),
-      PlayerSymbol::O => draw_circle(painter, rect, stroke),
-    }
-  };
-
-  let outer_rect = response.rect;
-
-  let inner_board_padding = 10.0;
-  let inner_board_size = (outer_rect.width() - 2.0 * inner_board_padding) / 3.0;
-  let tile_padding = 5.0;
+  let outer_board_padding = full_rect.width() / 30.0;
+  let outer_board_size = full_rect.width() - outer_board_padding;
+  let inner_board_padding = outer_board_size / 50.0;
+  let inner_board_size = (outer_board_size - 2.0 * inner_board_padding) / 3.0;
+  let tile_padding = outer_board_padding / 3.0;
   let tile_size = (inner_board_size - 2.0 * tile_padding) / 3.0;
+
+  let outer_rect = Rect::from_center_size(full_rect.center(), Vec2::splat(outer_board_size));
+
+  let current_player_color = player_color(game_state.current_player());
+
+  if game_state.current_player() == this_player {
+    painter.rect_stroke(
+      full_rect,
+      0.0,
+      egui::Stroke::new(0.5 * outer_board_padding, current_player_color),
+    );
+  }
 
   let mut clicked_tile = None;
   for youter in 0..3 {
@@ -70,33 +64,41 @@ pub fn build_board_ui(ui: &mut egui::Ui, game_state: &GameState) -> Option<Globa
           );
           let tile = inner_board.tile(InnerPos::new(xinner, yinner));
 
+          let default_tile_color = Color32::DARK_GRAY;
+          let marked_tile_color = lightened_color(current_player_color, 100);
+
           let mut tile_color = match game_state.current_outer_pos() {
             Some(curr_outer_pos) if curr_outer_pos == OuterPos::new(xouter, youter) => {
-              lightened_color(player_color(game_state.current_player()), 100)
+              marked_tile_color
             }
-            _ => Color32::DARK_GRAY,
+            None => marked_tile_color,
+            _ => default_tile_color,
           };
 
-          ui.ctx().input(|r| {
-            if let Some(hover_pos) = r.pointer.hover_pos() {
-              if tile_rect.contains(hover_pos) {
-                tile_color = lightened_color(tile_color, 100);
+          if game_state.current_player() == this_player {
+            ui.ctx().input(|r| {
+              if let Some(hover_pos) = r.pointer.hover_pos() {
+                if tile_rect.contains(hover_pos) {
+                  tile_color = lightened_color(tile_color, 100);
+                }
               }
-            }
-          });
+            });
+          }
           painter.rect_filled(tile_rect, 0.0, tile_color);
 
           if let TrivialTile::Won(p) = tile {
             draw_symbol(&painter, tile_rect, *p);
           }
 
-          if response.clicked()
-            && tile_rect.contains(ui.ctx().input(|r| r.pointer.hover_pos().unwrap()))
-          {
-            clicked_tile = Some(dbg!(GlobalPos::from((
-              OuterPos::new(xouter, youter),
-              InnerPos::new(xinner, yinner),
-            ))));
+          if response.clicked() {
+            if let Some(hover_pos) = ui.ctx().input(|r| r.pointer.hover_pos()) {
+              if tile_rect.contains(hover_pos) {
+                clicked_tile = Some(dbg!(GlobalPos::from((
+                  OuterPos::new(xouter, youter),
+                  InnerPos::new(xinner, yinner),
+                ))));
+              }
+            }
           }
         }
       }
@@ -107,4 +109,28 @@ pub fn build_board_ui(ui: &mut egui::Ui, game_state: &GameState) -> Option<Globa
     }
   }
   clicked_tile
+}
+
+pub fn draw_symbol(painter: &Painter, rect: Rect, symbol: PlayerSymbol) {
+  let stroke = Stroke::new(rect.width() / 10.0, player_color(symbol));
+  match symbol {
+    PlayerSymbol::X => draw_cross(painter, rect, stroke),
+    PlayerSymbol::O => draw_circle(painter, rect, stroke),
+  }
+}
+
+pub fn draw_cross(painter: &Painter, rect: Rect, stroke: Stroke) {
+  let offset = rect.width() / 8.0;
+  let a = rect.left_top() + Vec2::splat(offset);
+  let b = rect.right_bottom() - Vec2::splat(offset);
+  painter.line_segment([a, b], stroke);
+  let a = rect.right_top() + vec2(-offset, offset);
+  let b = rect.left_bottom() + vec2(offset, -offset);
+  painter.line_segment([a, b], stroke);
+}
+
+pub fn draw_circle(painter: &Painter, rect: Rect, stroke: Stroke) {
+  let center = rect.center();
+  let radius = rect.width() / 2.0 / 1.5;
+  painter.circle_stroke(center, radius, stroke);
 }

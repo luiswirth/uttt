@@ -3,7 +3,7 @@ use common::{
     game::GameState,
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   },
-  PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
+  PlayerSymbol, DEBUG, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
 };
 
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
@@ -21,7 +21,9 @@ impl Server {
         DEFAULT_IP
       );
       let mut ip_addr = String::new();
-      std::io::stdin().read_line(&mut ip_addr)?;
+      if !DEBUG {
+        std::io::stdin().read_line(&mut ip_addr)?;
+      }
       let ip_addr = ip_addr.trim();
 
       match ip_addr.is_empty() {
@@ -41,7 +43,9 @@ impl Server {
     let port = loop {
       println!("Enter port (press enter for default = {}):", DEFAULT_PORT);
       let mut port = String::new();
-      std::io::stdin().read_line(&mut port)?;
+      if !DEBUG {
+        std::io::stdin().read_line(&mut port)?;
+      }
       let port = port.trim();
 
       match port.is_empty() {
