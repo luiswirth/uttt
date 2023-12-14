@@ -19,7 +19,7 @@ use std::{
 
 use eframe::egui;
 
-const RANDOM_MOVES: bool = false;
+const RANDOM_MOVES: bool = true;
 
 enum Client {
   Connecting(ConnectingState),
@@ -259,7 +259,9 @@ impl Client {
               assert!(state.game_state.try_play_move(global_pos));
               state.can_place_symbol = true;
 
-              if state.game_state.winning_state().is_decided() {
+              if let Some(outcome) = state.game_state.game_outcome() {
+                // TODO: handle outcome
+                println!("{:?}", outcome);
                 Client::WaitingForGameStart(WaitingState {
                   msg_handler: state.msg_handler,
                   this_player: state.this_player,

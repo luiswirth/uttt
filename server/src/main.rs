@@ -117,7 +117,12 @@ impl Server {
       .unwrap();
 
     // main game loop
-    while !game_state.winning_state().is_decided() {
+    loop {
+      if let Some(outcome) = game_state.game_outcome() {
+        // TODO: handle outcome
+        println!("{:?}", outcome);
+        break;
+      }
       let tile_global_pos = self
         .receive_message(game_state.current_player())
         .unwrap()

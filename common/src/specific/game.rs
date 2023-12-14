@@ -48,8 +48,13 @@ impl GameState {
     self.curr_outer_pos
   }
 
-  pub fn winning_state(&self) -> TileBoardState {
-    self.outer_board.board_state()
+  pub fn game_outcome(&self) -> Option<GameOutcome> {
+    match self.outer_board.board_state() {
+      TileBoardState::Won(p) => Some(GameOutcome::Win(p)),
+      TileBoardState::Drawn => Some(GameOutcome::Draw),
+      TileBoardState::FullyDrawn => Some(GameOutcome::Draw),
+      _ => None,
+    }
   }
 }
 
@@ -74,4 +79,10 @@ impl GameState {
       .is_placeable()
       .then_some(next_outer_pos);
   }
+}
+
+#[derive(Debug)]
+pub enum GameOutcome {
+  Win(PlayerSymbol),
+  Draw,
 }

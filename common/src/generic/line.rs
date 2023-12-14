@@ -95,36 +95,88 @@ impl Iterator for LineIter {
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub enum LineState {
-  #[default]
-  Free,
-  PartiallyWon(PlayerSymbol, u8),
-  Won(PlayerSymbol),
-  Drawn,
+pub struct LineState {
+  occupant: Option<PlayerSymbol>,
+  noccupied: u8,
 }
 
+#[allow(dead_code)]
 impl LineState {
+  pub fn new(occupant: Option<PlayerSymbol>, noccupied: u8) -> Self {
+    assert!(noccupied <= BOARD_SIDE_LENGTH);
+    assert!(noccupied != 0 || occupant.is_none());
+    Self {
+      occupant,
+      noccupied,
+    }
+  }
+
+  pub fn free() -> Self {
+    Self::new(None, 0)
+  }
+
+  pub fn partially_won(player: PlayerSymbol, count: u8) -> Self {
+    assert!(count != 0);
+    Self::new(Some(player), count)
+  }
+
+  pub fn won(player: PlayerSymbol) -> Self {
+    Self::new(Some(player), BOARD_SIDE_LENGTH)
+  }
+
+  pub fn drawn(count: u8) -> Self {
+    assert!(count != 0);
+    Self::new(None, count)
+  }
+
+  pub fn fully_drawn() -> Self {
+    Self::new(None, BOARD_SIDE_LENGTH)
+  }
+
+  pub fn is_free(self) -> bool {
+    if self.noccupied == 0 {
+      debug_assert!(self.occupant.is_none());
+      true
+    } else {
+      false
+    }
+  }
+
+  pub fn is_partially_won(self) -> bool {
+    self.occupant.is_none() && self.noccupied != 0
+  }
+
+  pub fn is_won(self) -> bool {
+    self.occupant.is_some() && self.noccupied == BOARD_SIDE_LENGTH
+  }
+
   pub fn is_drawn(self) -> bool {
-    matches!(self, Self::Drawn)
+    self.occupant.is_none() && self.noccupied != 0
+  }
+
+  pub fn is_fully_drawn(self) -> bool {
+    self.occupant.is_none() && self.noccupied == BOARD_SIDE_LENGTH
+  }
+
+  pub fn winner(self) -> Option<PlayerSymbol> {
+    match self.is_won() {
+      true => self.occupant,
+      false => None,
+    }
   }
 
   /// combinator used to compute the state of a whole line
-  pub fn combinator(self, other: Self) -> Self {
-    match [self, other] {
-      [Self::PartiallyWon(p0, n0), Self::PartiallyWon(p1, n1)] if p0 == p1 => {
-        let n = n0 + n1;
-        debug_assert!(n <= BOARD_SIDE_LENGTH);
-        if n == BOARD_SIDE_LENGTH {
-          Self::Won(p0)
-        } else {
-          Self::PartiallyWon(p0, n)
-        }
-      }
-      [s @ Self::PartiallyWon(..), Self::Free] => s,
-      [Self::Free, s @ Self::PartiallyWon(..)] => s,
-      [Self::Free, Self::Free] => Self::Free,
-      [Self::Won(_), _] | [_, Self::Won(_)] => panic!("a winning line should never be combined"),
-      _ => Self::Drawn,
+  pub fn combine(self, other: Self) -> Self {
+    let noccupied = self.noccupied + other.noccupied;
+    let occupant = match [self.occupant, other.occupant] {
+      [a, b] if a == b => a,
+      [_, b] if self.noccupied == 0 => b,
+      [a, _] if other.noccupied == 0 => a,
+      _ => None,
+    };
+    Self {
+      occupant,
+      noccupied,
     }
   }
 }
@@ -132,9 +184,50 @@ impl LineState {
 impl From<TileBoardState> for LineState {
   fn from(t: TileBoardState) -> Self {
     match t {
-      TileBoardState::Free => Self::Free,
-      TileBoardState::Won(p) => Self::PartiallyWon(p, 1),
-      TileBoardState::Drawn => Self::Drawn,
+      TileBoardState::Free => Self::free(),
+      TileBoardState::Won(p) => Self::partially_won(p, 1),
+      TileBoardState::Drawn | TileBoardState::FullyDrawn => Self::drawn(1),
+    }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::LineState;
+  use crate::{BOARD_SIDE_LENGTH, PLAYERS};
+
+  #[test]
+  fn check_line_state_cominator() {
+    use LineState as L;
+
+    assert_eq!(L::free().combine(L::free()), L::free());
+
+    for p in PLAYERS {
+      let o = p.other();
+      assert_eq!(
+        L::free().combine(L::partially_won(p, 1)),
+        L::partially_won(p, 1)
+      );
+      assert_eq!(
+        L::partially_won(p, 1).combine(L::partially_won(p, 1)),
+        L::partially_won(p, 2)
+      );
+      assert_eq!(
+        L::partially_won(p, 1).combine(L::partially_won(o, 1)),
+        L::drawn(2)
+      );
+      assert_eq!(
+        L::partially_won(p, BOARD_SIDE_LENGTH - 1).combine(L::partially_won(p, 1)),
+        L::won(p)
+      );
+      assert_eq!(
+        L::drawn(BOARD_SIDE_LENGTH - 1).combine(L::drawn(1)),
+        L::fully_drawn()
+      );
+      assert_eq!(
+        L::drawn(BOARD_SIDE_LENGTH - 1).combine(L::partially_won(p, 1)),
+        L::fully_drawn()
+      );
     }
   }
 }

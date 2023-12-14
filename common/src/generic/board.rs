@@ -91,16 +91,19 @@ trait BoardTrait {
       let line_state = line
         .iter()
         .map(|pos| LineState::from(self.tile(pos).tile_state()))
-        .reduce(|a, b| a.combinator(b))
+        .reduce(|a, b| a.combine(b))
         .unwrap();
 
       *self.line_state_mut(line) = line_state;
-      if let LineState::Won(p) = line_state {
+      if let Some(p) = line_state.winner() {
         *self.board_state_mut() = TileBoardState::Won(p);
       }
     }
     if Line::all().all(|line| self.line_state(line).is_drawn()) {
       *self.board_state_mut() = TileBoardState::Drawn;
+    }
+    if Line::all().all(|line| self.line_state(line).is_fully_drawn()) {
+      *self.board_state_mut() = TileBoardState::FullyDrawn;
     }
   }
 }
@@ -201,6 +204,7 @@ pub enum TileBoardState {
   Free,
   Won(PlayerSymbol),
   Drawn,
+  FullyDrawn,
 }
 
 impl TileBoardState {
@@ -211,16 +215,17 @@ impl TileBoardState {
     matches!(self, Self::Won(_))
   }
   pub fn is_drawn(self) -> bool {
-    matches!(self, Self::Drawn)
+    matches!(self, Self::Drawn | Self::FullyDrawn)
   }
+  pub fn is_fully_drawn(self) -> bool {
+    matches!(self, Self::FullyDrawn)
+  }
+
   pub fn is_decided(self) -> bool {
     self.is_won() || self.is_drawn()
   }
-
-  // TODO: this is wrong. UTTT works differently.
-  // Every tile is placeable as long as it isn't won or fully drawn.
   pub fn is_placeable(self) -> bool {
-    !self.is_won() && !self.is_drawn()
+    !self.is_won() && !self.is_fully_drawn()
   }
 }
 
