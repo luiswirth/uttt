@@ -5,13 +5,13 @@ use super::{
   pos::{GlobalPos, InnerPos, OuterPos},
 };
 
-pub struct GameState {
+pub struct RoundState {
   outer_board: OuterBoard,
   curr_player: PlayerSymbol,
   curr_outer_pos: Option<OuterPos>,
 }
 
-impl GameState {
+impl RoundState {
   pub fn new(starting_player: PlayerSymbol) -> Self {
     Self {
       outer_board: OuterBoard::default(),
@@ -48,7 +48,7 @@ impl GameState {
     self.curr_outer_pos
   }
 
-  pub fn game_outcome(&self) -> Option<GameOutcome> {
+  pub fn outcome(&self) -> Option<GameOutcome> {
     match self.outer_board.board_state() {
       TileBoardState::Won(p) => Some(GameOutcome::Win(p)),
       TileBoardState::Drawn => Some(GameOutcome::Draw),
@@ -59,7 +59,7 @@ impl GameState {
 }
 
 // private methods
-impl GameState {
+impl RoundState {
   fn try_place_symbol(&mut self, global_pos: GlobalPos) -> bool {
     self
       .curr_outer_pos
@@ -81,8 +81,23 @@ impl GameState {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum GameOutcome {
   Win(PlayerSymbol),
   Draw,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Stats {
+  pub ngames: usize,
+  pub scores: [usize; 2],
+}
+impl Stats {
+  pub fn update(&mut self, outcome: GameOutcome) {
+    self.ngames += 1;
+    match outcome {
+      GameOutcome::Win(p) => self.scores[p as usize] += 1,
+      GameOutcome::Draw => (),
+    }
+  }
 }

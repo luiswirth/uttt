@@ -1,6 +1,6 @@
 use common::{
   specific::{
-    game::GameState,
+    game::{GameOutcome, RoundState},
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   },
   PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
@@ -83,7 +83,6 @@ impl Server {
         send_message_to_stream(&ServerMessage::SymbolAssignment(curr_player), &mut stream)
           .expect("sending message failed");
         println!("Player{} connected {}", i, stream.peer_addr().unwrap());
-        println!("Player{} was assigned {:?}", i, curr_player);
 
         let r = (curr_player, stream);
         curr_player.switch();
@@ -102,33 +101,47 @@ impl Server {
     Ok(Self { streams })
   }
 
-  fn run(&mut self) {
+  pub fn play_game(&mut self) {
+    // main game loop
     loop {
-      self.play_game();
+      let outcome = self.play_round();
+      match outcome {
+        GameOutcome::Win(p) => {
+          println!("Player {:?} won!", p);
+        }
+        GameOutcome::Draw => {
+          println!("Draw!");
+        }
+      }
+
+      for player in PLAYERS {
+        self.receive_message(player).unwrap().start_game();
+      }
     }
   }
+}
 
-  fn play_game(&mut self) {
+impl Server {
+  fn play_round(&mut self) -> GameOutcome {
+    println!("New round started.");
     let starting_player: PlayerSymbol = rand::random();
-    let mut game_state = GameState::new(starting_player);
+    let mut round_state = RoundState::new(starting_player);
 
     self
       .broadcast_message(&ServerMessage::GameStart(starting_player))
       .unwrap();
 
-    // main game loop
+    // main round loop
     loop {
-      if let Some(outcome) = game_state.game_outcome() {
-        // TODO: handle outcome
-        println!("{:?}", outcome);
-        break;
+      if let Some(outcome) = round_state.outcome() {
+        return outcome;
       }
       let tile_global_pos = self
-        .receive_message(game_state.current_player())
+        .receive_message(round_state.current_player())
         .unwrap()
         .place_symbol_proposal();
 
-      if game_state.try_play_move(tile_global_pos) {
+      if round_state.try_play_move(tile_global_pos) {
         self
           .broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))
           .unwrap();
@@ -140,30 +153,24 @@ impl Server {
       }
     }
   }
-}
 
-impl Server {
-  pub fn stream_mut(&mut self, player: PlayerSymbol) -> &mut TcpStream {
+  fn stream_mut(&mut self, player: PlayerSymbol) -> &mut TcpStream {
     &mut self.streams[player.idx()]
   }
 
-  pub fn send_message(
-    &mut self,
-    message: &ServerMessage,
-    player: PlayerSymbol,
-  ) -> eyre::Result<()> {
+  fn send_message(&mut self, message: &ServerMessage, player: PlayerSymbol) -> eyre::Result<()> {
     send_message_to_stream(message, self.stream_mut(player))?;
     Ok(())
   }
 
-  pub fn broadcast_message(&mut self, message: &ServerMessage) -> eyre::Result<()> {
+  fn broadcast_message(&mut self, message: &ServerMessage) -> eyre::Result<()> {
     for p in PLAYERS {
       self.send_message(message, p)?;
     }
     Ok(())
   }
 
-  pub fn receive_message(&mut self, player: PlayerSymbol) -> std::io::Result<ClientMessage> {
+  fn receive_message(&mut self, player: PlayerSymbol) -> std::io::Result<ClientMessage> {
     receive_message_from_stream(self.stream_mut(player))
   }
 }
@@ -174,5 +181,5 @@ fn main() {
     .init();
 
   let mut server = Server::connect().unwrap();
-  server.run()
+  server.play_game()
 }

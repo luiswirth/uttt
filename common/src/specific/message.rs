@@ -51,13 +51,20 @@ impl ServerMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
   PlaceSymbolProposal(GlobalPos),
+  StartGame,
 }
 
 impl ClientMessage {
   pub fn place_symbol_proposal(self) -> GlobalPos {
     match self {
       Self::PlaceSymbolProposal(p) => p,
-      //_ => panic!("expected `PlaceSymbolProposal`, got `{:?}`", self),
+      _ => panic!("expected `PlaceSymbolProposal`, got `{:?}`", self),
+    }
+  }
+  pub fn start_game(self) {
+    match self {
+      Self::StartGame => (),
+      _ => panic!("expected `StartGame`, got `{:?}`", self),
     }
   }
 }

@@ -8,8 +8,8 @@ cleanup() {
 # trap the SIGINT signal (ctrl-c)
 trap cleanup INT
 
-cargo r --features auto_connect --bin uttt-server &
-cargo r --features auto_connect --bin uttt-client &
-cargo r --features auto_connect --bin uttt-client &
+cargo r --bin uttt-server --features auto_connect &
+cargo r --bin uttt-client --features "auto_connect auto_play auto_next_round" &
+cargo r --bin uttt-client --features "auto_connect auto_play auto_next_round" &
 
 wait

@@ -1,15 +1,17 @@
 pub mod board_ui;
 pub mod util;
 
-use crate::{board_ui::build_board_ui, util::choose_random_tile};
+use crate::{
+  board_ui::build_board_ui,
+  util::{choose_random_tile, player_color},
+};
 use common::{
   specific::{
-    game::GameState,
+    game::{GameOutcome, RoundState, Stats},
     message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
   },
-  PlayerSymbol, DEFAULT_IP, DEFAULT_PORT,
+  PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
 };
-use util::player_color;
 
 use std::{
   mem,
@@ -18,8 +20,6 @@ use std::{
 };
 
 use eframe::egui;
-
-const RANDOM_MOVES: bool = false;
 
 enum Client {
   Connecting(ConnectingState),
@@ -50,6 +50,7 @@ struct ConnectingState {
   port: String,
   port_error: Option<String>,
   connection_error: Option<String>,
+
   msg_handler: Option<MessageIoHandlerNoBlocking>,
 }
 impl Default for ConnectingState {
@@ -69,12 +70,18 @@ impl Default for ConnectingState {
 struct WaitingState {
   msg_handler: MessageIoHandlerNoBlocking,
   this_player: PlayerSymbol,
+
+  stats: Stats,
 }
 struct PlayingState {
   msg_handler: MessageIoHandlerNoBlocking,
   this_player: PlayerSymbol,
-  game_state: GameState,
+
+  stats: Stats,
+  round_state: RoundState,
+
   can_place_symbol: bool,
+  stats_updated: bool,
 }
 
 impl eframe::App for Client {
@@ -155,6 +162,7 @@ impl Client {
               Client::WaitingForGameStart(WaitingState {
                 msg_handler,
                 this_player: symbol,
+                stats: Stats::default(),
               })
             } else {
               state.msg_handler = Some(msg_handler);
@@ -170,114 +178,161 @@ impl Client {
   }
 
   fn update_waiting(mut state: WaitingState, ctx: &egui::Context) -> Self {
-    egui::CentralPanel::default()
-      .show(ctx, |ui| {
+    egui::CentralPanel::default().show(ctx, |ui| {
+      ui.vertical_centered(|ui| {
         ui.add_space(50.0);
-        ui.colored_label(egui::Color32::GREEN, "Successfully connected to server.");
-        ui.label("Waiting for other player...");
-
-        if let Some(msg) = state
-          .msg_handler
-          .try_read_message::<ServerMessage>()
-          .unwrap()
-        {
-          let starting_player = msg.game_start();
-          let game_state = GameState::new(starting_player);
-          Client::Playing(PlayingState {
-            msg_handler: state.msg_handler,
-            this_player: state.this_player,
-            game_state,
-            can_place_symbol: true,
-          })
-        } else {
-          Client::WaitingForGameStart(state)
-        }
+        ui.heading("Waiting for other player...");
+        ui.add_space(50.0);
+        build_stats_ui(ui, &state.stats)
       })
-      .inner
+    });
+
+    if let Some(msg) = state
+      .msg_handler
+      .try_read_message::<ServerMessage>()
+      .unwrap()
+    {
+      let starting_player = msg.game_start();
+      let round_state = RoundState::new(starting_player);
+      Client::Playing(PlayingState {
+        msg_handler: state.msg_handler,
+        this_player: state.this_player,
+        stats: state.stats,
+        round_state,
+        can_place_symbol: true,
+        stats_updated: false,
+      })
+    } else {
+      Client::WaitingForGameStart(state)
+    }
   }
 
   fn update_playing(mut state: PlayingState, ctx: &egui::Context) -> Self {
     state.msg_handler.try_write_message::<()>(None).unwrap();
 
-    egui::SidePanel::left("left-panel").show(ctx, |ui| {
-      ui.vertical_centered(|ui| {
-        ui.add_space(10.0);
-
-        ui.label(egui::RichText::new("You are").size(30.0));
-        let (response, painter) =
-          ui.allocate_painter(egui::vec2(100.0, 100.0), egui::Sense::hover());
-        let rect = response.rect;
-        board_ui::draw_symbol(&painter, rect, state.this_player);
-
-        ui.add_space(20.0);
-        ui.separator();
-        ui.add_space(20.0);
-
-        ui.label(egui::RichText::new("Turn of").size(30.0));
-        ui.label(
-          egui::RichText::new(if state.this_player == state.game_state.current_player() {
-            "YOU"
-          } else {
-            "THEM"
-          })
-          .color(player_color(state.game_state.current_player()))
-          .size(50.0),
-        );
-
-        let (response, painter) =
-          ui.allocate_painter(egui::vec2(100.0, 100.0), egui::Sense::hover());
-        let rect = response.rect;
-        board_ui::draw_symbol(&painter, rect, state.game_state.current_player());
-      });
-    });
-
-    egui::CentralPanel::default()
+    state = match egui::SidePanel::left("left-panel")
       .show(ctx, |ui| {
-        let mut chosen_tile = build_board_ui(ui, &state.game_state, state.this_player);
+        ui.vertical_centered(|ui| {
+          ui.add_space(10.0);
 
-        if RANDOM_MOVES {
-          chosen_tile = Some(choose_random_tile(&state.game_state));
-        }
+          build_stats_ui(ui, &state.stats);
 
-        if state.this_player == state.game_state.current_player() && state.can_place_symbol {
-          if let Some(chosen_tile) = chosen_tile {
-            if state.game_state.could_play_move(chosen_tile) {
-              let msg = ClientMessage::PlaceSymbolProposal(chosen_tile);
+          ui.add_space(20.0);
+          ui.separator();
+          ui.add_space(20.0);
+
+          ui.label(egui::RichText::new("You are").size(30.0));
+          let (response, painter) =
+            ui.allocate_painter(egui::vec2(100.0, 100.0), egui::Sense::hover());
+          let rect = response.rect;
+          board_ui::draw_symbol(&painter, rect, state.this_player);
+
+          ui.add_space(20.0);
+          ui.separator();
+          ui.add_space(20.0);
+
+          if let Some(outcome) = state.round_state.outcome() {
+            if !state.stats_updated {
+              state.stats_updated = true;
+              state.stats.update(outcome);
+            }
+
+            ui.heading(match outcome {
+              GameOutcome::Win(p) => match p == state.this_player {
+                true => "You won!".to_string(),
+                false => "You lost!".to_string(),
+              },
+              GameOutcome::Draw => "Draw!".to_string(),
+            });
+
+            if ui.button("Play again").clicked() || cfg!(feature = "auto_next_round") {
+              let msg = ClientMessage::StartGame;
               state.msg_handler.try_write_message(Some(msg)).unwrap();
-              state.can_place_symbol = false;
+              return Ok(Client::WaitingForGameStart(WaitingState {
+                msg_handler: state.msg_handler,
+                this_player: state.this_player,
+                stats: state.stats,
+              }));
             }
-          }
-        }
-
-        if let Some(msg) = state
-          .msg_handler
-          .try_read_message::<ServerMessage>()
-          .unwrap()
-        {
-          match msg {
-            ServerMessage::PlaceSymbolAccepted(global_pos) => {
-              assert!(state.game_state.try_play_move(global_pos));
-              state.can_place_symbol = true;
-
-              if let Some(outcome) = state.game_state.game_outcome() {
-                // TODO: handle outcome
-                println!("{:?}", outcome);
-                Client::WaitingForGameStart(WaitingState {
-                  msg_handler: state.msg_handler,
-                  this_player: state.this_player,
-                })
+          } else {
+            ui.label(egui::RichText::new("Turn of").size(30.0));
+            ui.label(
+              egui::RichText::new(if state.this_player == state.round_state.current_player() {
+                "YOU"
               } else {
-                Client::Playing(state)
-              }
-            }
-            _ => panic!("unexpected message: {:?}", msg),
+                "THEM"
+              })
+              .color(player_color(state.round_state.current_player()))
+              .size(50.0),
+            );
+            let (response, painter) =
+              ui.allocate_painter(egui::vec2(100.0, 100.0), egui::Sense::hover());
+            let rect = response.rect;
+            board_ui::draw_symbol(&painter, rect, state.round_state.current_player());
           }
-        } else {
-          Client::Playing(state)
-        }
+
+          Err(state)
+        })
+        .inner
       })
       .inner
+    {
+      Ok(new_state) => return new_state,
+      Err(old_state) => old_state,
+    };
+
+    egui::CentralPanel::default().show(ctx, |ui| {
+      let mut chosen_tile = build_board_ui(ui, &state.round_state, state.this_player);
+
+      if state.round_state.outcome().is_some() {
+        return;
+      }
+
+      if cfg!(feature = "auto_play") {
+        chosen_tile = Some(choose_random_tile(&state.round_state));
+      }
+
+      if state.this_player == state.round_state.current_player() && state.can_place_symbol {
+        if let Some(chosen_tile) = chosen_tile {
+          if state.round_state.could_play_move(chosen_tile) {
+            let msg = ClientMessage::PlaceSymbolProposal(chosen_tile);
+            state.msg_handler.try_write_message(Some(msg)).unwrap();
+            state.can_place_symbol = false;
+          }
+        }
+      }
+
+      if let Some(msg) = state
+        .msg_handler
+        .try_read_message::<ServerMessage>()
+        .unwrap()
+      {
+        match msg {
+          ServerMessage::PlaceSymbolAccepted(global_pos) => {
+            assert!(state.round_state.try_play_move(global_pos));
+            state.can_place_symbol = true;
+          }
+          _ => panic!("unexpected message: {:?}", msg),
+        }
+      }
+    });
+    Client::Playing(state)
   }
+}
+
+fn build_stats_ui(ui: &mut egui::Ui, stats: &Stats) {
+  ui.label(egui::RichText::new("Stats").size(30.0));
+  ui.label(format!("Game #{}", stats.ngames));
+  ui.label(format!(
+    "Wins {}: {}",
+    PLAYERS[0].as_char(),
+    stats.scores[0]
+  ));
+  ui.label(format!(
+    "Wins {}: {}",
+    PLAYERS[1].as_char(),
+    stats.scores[1]
+  ));
 }
 
 fn main() {

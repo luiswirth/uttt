@@ -1,7 +1,7 @@
 use common::{
   generic::board::{TileBoardState, TrivialTile},
   specific::{
-    game::GameState,
+    game::RoundState,
     pos::{GlobalPos, InnerPos, OuterPos},
   },
   PlayerSymbol,
@@ -14,7 +14,7 @@ use crate::util::{lightened_color, player_color};
 /// returns `Some(global_pos)` if a tile was clicked
 pub fn build_board_ui(
   ui: &mut egui::Ui,
-  game_state: &GameState,
+  game_state: &RoundState,
   this_player: PlayerSymbol,
 ) -> Option<GlobalPos> {
   let available_size = Vec2::splat(ui.available_size().min_elem());

@@ -1,6 +1,6 @@
 use common::{
   specific::{
-    game::GameState,
+    game::RoundState,
     pos::{GlobalPos, InnerPos, OuterPos},
   },
   PlayerSymbol,
@@ -23,7 +23,7 @@ pub fn lightened_color(color: egui::Color32, amount: u8) -> egui::Color32 {
   )
 }
 
-pub fn choose_random_tile(game_state: &GameState) -> GlobalPos {
+pub fn choose_random_tile(game_state: &RoundState) -> GlobalPos {
   use rand::Rng;
   let mut rng = rand::thread_rng();
   let outer_pos = game_state.current_outer_pos().unwrap_or_else(|| loop {

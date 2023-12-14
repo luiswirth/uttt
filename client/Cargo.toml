@@ -24,3 +24,5 @@ features = ["x11", "wayland", "wgpu", "accesskit", "default_fonts"]
 
 [features]
 auto_connect = []
+auto_play = []
+auto_next_round = []
