@@ -20,3 +20,7 @@ rand = "0.8.5"
 version = "0.24.1"
 default-features = false
 features = ["x11", "wayland", "wgpu", "accesskit", "default_fonts"]
+
+
+[features]
+auto_connect = []

@@ -7,7 +7,7 @@ use common::{
     game::GameState,
     message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
   },
-  PlayerSymbol, DEBUG, DEFAULT_IP, DEFAULT_PORT,
+  PlayerSymbol, DEFAULT_IP, DEFAULT_PORT,
 };
 use util::player_color;
 
@@ -108,7 +108,9 @@ impl Client {
           ui.text_edit_singleline(&mut state.port)
             .labelled_by(port_label.id);
 
-          if state.msg_handler.is_none() && (ui.button("Connect").clicked() || DEBUG) {
+          if state.msg_handler.is_none()
+            && (ui.button("Connect").clicked() || cfg!(feature = "auto_connect"))
+          {
             match Ipv4Addr::from_str(state.ip_addr.trim()) {
               Err(e) => state.ip_addr_error = Some(e.to_string()),
               Ok(ip_addr) => {
