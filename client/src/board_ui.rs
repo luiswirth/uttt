@@ -51,7 +51,8 @@ pub fn build_board_ui(
         ),
         Vec2::splat(inner_board_size),
       );
-      let inner_board = game_state.board().tile(OuterPos::new(xouter, youter));
+      let outer_pos = OuterPos::new(xouter, youter);
+      let inner_board = game_state.board().tile(outer_pos);
 
       for yinner in 0..3 {
         for xinner in 0..3 {
@@ -62,7 +63,9 @@ pub fn build_board_ui(
             ),
             Vec2::splat(tile_size),
           );
-          let tile = inner_board.tile(InnerPos::new(xinner, yinner));
+          let inner_pos = InnerPos::new(xinner, yinner);
+          let global_pos = GlobalPos::from((outer_pos, inner_pos));
+          let tile = inner_board.tile(inner_pos);
 
           let default_tile_color = Color32::DARK_GRAY;
           let marked_tile_color = lightened_color(current_player_color, 100);
@@ -78,7 +81,7 @@ pub fn build_board_ui(
           if game_state.current_player() == this_player {
             ui.ctx().input(|r| {
               if let Some(hover_pos) = r.pointer.hover_pos() {
-                if tile_rect.contains(hover_pos) {
+                if tile_rect.contains(hover_pos) && game_state.could_play_move(global_pos) {
                   tile_color = lightened_color(tile_color, 100);
                 }
               }
@@ -93,10 +96,10 @@ pub fn build_board_ui(
           if response.clicked() {
             if let Some(hover_pos) = ui.ctx().input(|r| r.pointer.hover_pos()) {
               if tile_rect.contains(hover_pos) {
-                clicked_tile = Some(dbg!(GlobalPos::from((
+                clicked_tile = Some(GlobalPos::from((
                   OuterPos::new(xouter, youter),
                   InnerPos::new(xinner, yinner),
-                ))));
+                )));
               }
             }
           }
