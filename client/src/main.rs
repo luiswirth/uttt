@@ -19,7 +19,7 @@ use std::{
 
 use eframe::egui;
 
-const RANDOM_MOVES: bool = true;
+const RANDOM_MOVES: bool = false;
 
 enum Client {
   Connecting(ConnectingState),
