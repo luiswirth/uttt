@@ -157,18 +157,17 @@ impl Client {
 
             if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
               let symbol = msg.symbol_assignment();
-              Client::WaitingForGameStart(WaitingState {
+              return Client::WaitingForGameStart(WaitingState {
                 msg_handler,
                 this_player: symbol,
                 stats: Stats::default(),
-              })
+              });
             } else {
               state.msg_handler = Some(msg_handler);
-              Client::Connecting(state)
             }
-          } else {
-            Client::Connecting(state)
           }
+
+          Client::Connecting(state)
         })
         .inner
       })
