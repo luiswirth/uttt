@@ -115,7 +115,7 @@ impl Server {
       }
 
       for player in PLAYERS {
-        self.receive_message(player).unwrap().start_game();
+        self.receive_message(player).unwrap().start_round_request();
       }
     }
   }
@@ -128,7 +128,7 @@ impl Server {
     let mut round_state = RoundState::new(starting_player);
 
     self
-      .broadcast_message(&ServerMessage::GameStart(starting_player))
+      .broadcast_message(&ServerMessage::RoundStart(starting_player))
       .unwrap();
 
     // main round loop
@@ -150,15 +150,18 @@ impl Server {
         e => panic!("expected `PlaceSymbolProposal` or `GiveUp`, got `{:?}`", e),
       };
 
-      if round_state.try_play_move(tile_global_pos) {
-        self
-          .broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))
-          .unwrap();
-      } else {
-        self
-          .broadcast_message(&ServerMessage::PlaceSymbolRejected)
-          .unwrap();
-        panic!("invalid move! {:?}", tile_global_pos);
+      match round_state.try_play_move(tile_global_pos) {
+        Ok(()) => {
+          self
+            .broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))
+            .unwrap();
+        }
+        Err(e) => {
+          self
+            .broadcast_message(&ServerMessage::PlaceSymbolRejected)
+            .unwrap();
+          panic!("{:?}", e);
+        }
       }
     }
   }

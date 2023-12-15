@@ -192,7 +192,7 @@ impl Client {
       .try_read_message::<ServerMessage>()
       .unwrap()
     {
-      let starting_player = msg.game_start();
+      let starting_player = msg.round_start();
       let round_state = RoundState::new(starting_player);
       Client::Playing(PlayingState {
         msg_handler: state.msg_handler,
@@ -241,7 +241,7 @@ impl Client {
             });
 
             if ui.button("Play again").clicked() || cfg!(feature = "auto_next_round") {
-              let msg = ClientMessage::StartGame;
+              let msg = ClientMessage::StartRoundRequest;
               state.msg_handler.try_write_message(Some(msg)).unwrap();
               return Ok(Client::WaitingForGameStart(WaitingState {
                 msg_handler: state.msg_handler,
@@ -313,7 +313,7 @@ impl Client {
       {
         match msg {
           ServerMessage::PlaceSymbolAccepted(global_pos) => {
-            assert!(state.round.try_play_move(global_pos));
+            state.round.try_play_move(global_pos).unwrap();
             state.can_place_symbol = true;
           }
           ServerMessage::OtherGiveUp => {

@@ -1,4 +1,7 @@
-use crate::{generic::board::TileBoardState, PlayerSymbol};
+use crate::{
+  generic::board::{PlaceSymbolError, TileBoardState},
+  PlayerSymbol,
+};
 
 use super::{
   board::OuterBoard,
@@ -28,14 +31,11 @@ impl RoundState {
       && self.outer_board.could_place_symbol(global_pos)
   }
 
-  pub fn try_play_move(&mut self, chosen_tile: GlobalPos) -> bool {
-    if self.try_place_symbol(chosen_tile) {
-      self.update_outer_pos(chosen_tile);
-      self.curr_player.switch();
-      true
-    } else {
-      false
-    }
+  pub fn try_play_move(&mut self, chosen_tile: GlobalPos) -> Result<(), MoveError> {
+    self.try_place_symbol(chosen_tile)?;
+    self.update_outer_pos(chosen_tile);
+    self.curr_player.switch();
+    Ok(())
   }
 
   pub fn board(&self) -> &OuterBoard {
@@ -60,14 +60,19 @@ impl RoundState {
 
 // private methods
 impl RoundState {
-  fn try_place_symbol(&mut self, global_pos: GlobalPos) -> bool {
+  fn try_place_symbol(&mut self, global_pos: GlobalPos) -> Result<(), MoveError> {
     self
       .curr_outer_pos
       .map(|curr_outer_pos| curr_outer_pos == OuterPos::from(global_pos))
       .unwrap_or(true)
-      && self
-        .outer_board
-        .try_place_symbol(global_pos, self.curr_player)
+      .then_some(())
+      .ok_or(MoveError::WrongOuterPos)
+      .and(
+        self
+          .outer_board
+          .try_place_symbol(global_pos, self.curr_player)
+          .map_err(MoveError::PlaceSymbol),
+      )
   }
 
   fn update_outer_pos(&mut self, last_move_pos: GlobalPos) {
@@ -79,6 +84,12 @@ impl RoundState {
       .is_placeable()
       .then_some(next_outer_pos);
   }
+}
+
+#[derive(Debug)]
+pub enum MoveError {
+  PlaceSymbol(PlaceSymbolError),
+  WrongOuterPos,
 }
 
 #[derive(Debug, Clone, Copy)]

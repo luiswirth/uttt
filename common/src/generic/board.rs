@@ -1,3 +1,5 @@
+#![allow(clippy::let_unit_value)]
+
 use crate::{generic::line::LineState, PlayerSymbol, BOARD_AREA};
 use std::str::FromStr;
 
@@ -35,7 +37,7 @@ impl<TileType: TileTrait> GenericBoard<TileType> {
     &mut self,
     pos: impl IntoIterator<Item = Pos>,
     symbol: PlayerSymbol,
-  ) -> bool {
+  ) -> Result<(), PlaceSymbolError> {
     BoardTrait::try_place_symbol(self, pos.into_iter(), symbol)
   }
 }
@@ -72,16 +74,15 @@ trait BoardTrait {
     &mut self,
     mut pos_iter: impl Iterator<Item = Pos>,
     symbol: PlayerSymbol,
-  ) -> bool {
+  ) -> Result<(), PlaceSymbolError> {
     let local_pos = pos_iter.next().expect("ran out of positions");
 
-    if self.board_state().is_placeable()
-      && TileTrait::try_place_symbol(self.tile_mut(local_pos), pos_iter, symbol)
-    {
+    if self.board_state().is_placeable() {
+      let ok = TileTrait::try_place_symbol(self.tile_mut(local_pos), pos_iter, symbol)?;
       self.update_super_states(local_pos);
-      true
+      Ok(ok)
     } else {
-      false
+      Err(PlaceSymbolError::BoardNotPlaceable)
     }
   }
 
@@ -140,8 +141,11 @@ trait TileTrait {
   fn trivial_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile;
 
   fn could_place_symbol(&self, pos_iter: impl Iterator<Item = Pos>) -> bool;
-  fn try_place_symbol(&mut self, pos_iter: impl Iterator<Item = Pos>, symbol: PlayerSymbol)
-    -> bool;
+  fn try_place_symbol(
+    &mut self,
+    pos_iter: impl Iterator<Item = Pos>,
+    symbol: PlayerSymbol,
+  ) -> Result<(), PlaceSymbolError>;
 }
 
 /// Base case of the inductive tile hierarchy.
@@ -163,13 +167,13 @@ impl TileTrait for TrivialTile {
     &mut self,
     mut pos_iter: impl Iterator<Item = Pos>,
     symbol: PlayerSymbol,
-  ) -> bool {
+  ) -> Result<(), PlaceSymbolError> {
     assert!(pos_iter.next().is_none());
     if self.is_free() {
       *self = TrivialTile::Won(symbol);
-      true
+      Ok(())
     } else {
-      false
+      Err(PlaceSymbolError::TrivialTileNotFree)
     }
   }
 }
@@ -190,7 +194,7 @@ impl<BoardType: BoardTrait> TileTrait for BoardType {
     &mut self,
     pos_iter: impl Iterator<Item = Pos>,
     symbol: PlayerSymbol,
-  ) -> bool {
+  ) -> Result<(), PlaceSymbolError> {
     BoardTrait::try_place_symbol(self, pos_iter, symbol)
   }
 }
@@ -269,6 +273,12 @@ impl From<TrivialTile> for TileBoardState {
 }
 
 #[derive(Debug)]
+pub enum PlaceSymbolError {
+  BoardNotPlaceable,
+  TrivialTileNotFree,
+}
+
+#[derive(Debug)]
 pub enum TrivialBoardParseError {
   InvalidChar(char),
   BadSymbolCount,
@@ -293,7 +303,7 @@ impl FromStr for TrivialBoard {
       if let TrivialTile::Won(p) = tile {
         let pos = Pos::from_linear_idx(i);
         // TODO: maybe handle better
-        assert!(board.try_place_symbol(pos.iter(), p));
+        board.try_place_symbol(pos.iter(), p).unwrap();
       }
     }
 

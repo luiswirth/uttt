@@ -16,7 +16,7 @@ const NBYTES_MESSAGE_LENGTH: usize = std::mem::size_of::<MessageLength>();
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerMessage {
   SymbolAssignment(PlayerSymbol),
-  GameStart(PlayerSymbol),
+  RoundStart(PlayerSymbol),
   PlaceSymbolRejected,
   PlaceSymbolAccepted(GlobalPos),
   OtherGiveUp,
@@ -29,9 +29,9 @@ impl ServerMessage {
       _ => panic!("expected `SymbolAssignment`, got `{:?}`", self),
     }
   }
-  pub fn game_start(self) -> PlayerSymbol {
+  pub fn round_start(self) -> PlayerSymbol {
     match self {
-      Self::GameStart(s) => s,
+      Self::RoundStart(s) => s,
       _ => panic!("wong message: expected `GameStart`, got `{:?}`", self),
     }
   }
@@ -58,7 +58,7 @@ impl ServerMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
   PlaceSymbolProposal(GlobalPos),
-  StartGame,
+  StartRoundRequest,
   GiveUp,
 }
 
@@ -69,9 +69,9 @@ impl ClientMessage {
       _ => panic!("expected `PlaceSymbolProposal`, got `{:?}`", self),
     }
   }
-  pub fn start_game(self) {
+  pub fn start_round_request(self) {
     match self {
-      Self::StartGame => (),
+      Self::StartRoundRequest => (),
       _ => panic!("expected `StartGame`, got `{:?}`", self),
     }
   }
