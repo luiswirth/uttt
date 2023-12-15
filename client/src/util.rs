@@ -1,10 +1,4 @@
-use common::{
-  specific::{
-    game::RoundState,
-    pos::{GlobalPos, InnerPos, OuterPos},
-  },
-  PlayerSymbol,
-};
+use common::{game::RoundState, GlobalPos, InnerPos, OuterPos, PlayerSymbol};
 
 use eframe::egui;
 

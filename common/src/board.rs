@@ -1,16 +1,23 @@
-use crate::{generic::line::LineState, PlayerSymbol, BOARD_AREA};
+mod line;
+pub(crate) mod pos;
+
+use crate::PlayerSymbol;
 use std::str::FromStr;
 
-use super::{line::Line, pos::Pos};
+use line::{Line, LineState};
+use pos::Pos;
+
+pub const BOARD_SIDE_LENGTH: u8 = 3;
+pub const BOARD_AREA: u8 = BOARD_SIDE_LENGTH * BOARD_SIDE_LENGTH;
 
 /// `TrivialBoard` is the bottom of the board hierarchy.
 /// It is the base case of the inductive type `GenericBoard`.
 pub type TrivialBoard = GenericBoard<TrivialTile>;
 
 /// Inductive type generating the board hierarchy.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub struct GenericBoard<TileType> {
-  tiles: [TileType; 9],
+  tiles: Tiles<TileType>,
   board_state: TileBoardState,
   line_states: [LineState; 8],
 }
@@ -21,37 +28,23 @@ impl<TileType: TileTrait> GenericBoard<TileType> {
   pub fn board_state(&self) -> TileBoardState {
     self.board_state
   }
-  fn board_state_mut(&mut self) -> &mut TileBoardState {
-    &mut self.board_state
-  }
-
-  fn line_state(&self, line: Line) -> LineState {
-    self.line_states[line.idx()]
-  }
-  fn line_state_mut(&mut self, line: Line) -> &mut LineState {
-    &mut self.line_states[line.idx()]
-  }
 
   pub fn tile(&self, pos: impl Into<Pos>) -> &TileType {
-    &self.tiles[pos.into().linear_idx()]
-  }
-  fn tile_mut(&mut self, pos: impl Into<Pos>) -> &mut TileType {
-    &mut self.tiles[pos.into().linear_idx()]
+    &self.tiles[pos]
   }
 
   /// Returns the trivial tile at the given position, by recursively walking the board hierarchy.
   fn trivial_tile(&self, pos_iter: impl IntoIterator<Item = Pos>) -> TrivialTile {
     let mut pos_iter = pos_iter.into_iter();
     let local_pos = pos_iter.next().expect("ran out of positions");
-    TileTrait::trivial_tile(self.tile(local_pos), pos_iter)
+    self.tiles[local_pos].trivial_tile_in_tile(pos_iter)
   }
 
   pub fn could_place_symbol(&self, pos_iter: impl IntoIterator<Item = Pos>) -> bool {
     let mut pos_iter = pos_iter.into_iter();
     let local_pos = pos_iter.next().expect("ran out of positions");
 
-    self.board_state().is_placeable()
-      && TileTrait::could_place_symbol(self.tile(local_pos), pos_iter)
+    self.board_state().is_placeable() && self.tiles[local_pos].could_place_symbol_in_tile(pos_iter)
   }
 
   /// Tries to place a symbol on the given trivial tile, by recursively walking the board hierarchy and
@@ -65,7 +58,7 @@ impl<TileType: TileTrait> GenericBoard<TileType> {
     let local_pos = pos_iter.next().expect("ran out of positions");
 
     if self.board_state().is_placeable() {
-      TileTrait::try_place_symbol(self.tile_mut(local_pos), pos_iter, symbol)?;
+      self.tiles[local_pos].try_place_symbol_in_tile(pos_iter, symbol)?;
       self.update_super_states(local_pos);
       Ok(())
     } else {
@@ -74,24 +67,24 @@ impl<TileType: TileTrait> GenericBoard<TileType> {
   }
 
   /// Updates the local super states (line and board states), after a tile at the given pos has changed.
-  pub fn update_super_states(&mut self, local_pos: Pos) {
+  fn update_super_states(&mut self, local_pos: Pos) {
     for line in Line::all_through_point(local_pos) {
       let line_state = line
         .iter()
-        .map(|pos| LineState::from(self.tile(pos).tile_state()))
+        .map(|pos| LineState::from(self.tiles[pos].tile_state()))
         .reduce(|a, b| a.combine(b))
         .unwrap();
 
-      *self.line_state_mut(line) = line_state;
+      self.line_states[line.idx()] = line_state;
       if let Some(p) = line_state.winner() {
-        *self.board_state_mut() = TileBoardState::Won(p);
+        self.board_state = TileBoardState::Won(p);
       }
     }
-    if Line::all().all(|line| self.line_state(line).is_drawn()) {
-      *self.board_state_mut() = TileBoardState::Drawn;
+    if Line::all().all(|line| self.line_states[line.idx()].is_drawn()) {
+      self.board_state = TileBoardState::Drawn;
     }
-    if Line::all().all(|line| self.line_state(line).is_fully_drawn()) {
-      *self.board_state_mut() = TileBoardState::FullyDrawn;
+    if Line::all().all(|line| self.line_states[line.idx()].is_fully_drawn()) {
+      self.board_state = TileBoardState::FullyDrawn;
     }
   }
 }
@@ -129,10 +122,10 @@ impl TrivialTile {
 /// Trait to allow recursion on inductive tile hierarchy.
 trait TileTrait {
   fn tile_state(&self) -> TileBoardState;
-  fn trivial_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile;
+  fn trivial_tile_in_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile;
 
-  fn could_place_symbol(&self, pos_iter: impl Iterator<Item = Pos>) -> bool;
-  fn try_place_symbol(
+  fn could_place_symbol_in_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> bool;
+  fn try_place_symbol_in_tile(
     &mut self,
     pos_iter: impl Iterator<Item = Pos>,
     symbol: PlayerSymbol,
@@ -145,16 +138,16 @@ impl TileTrait for TrivialTile {
     (*self).into()
   }
 
-  fn trivial_tile(&self, mut pos_iter: impl Iterator<Item = Pos>) -> TrivialTile {
+  fn trivial_tile_in_tile(&self, mut pos_iter: impl Iterator<Item = Pos>) -> TrivialTile {
     assert!(pos_iter.next().is_none());
     *self
   }
 
-  fn could_place_symbol(&self, mut pos_iter: impl Iterator<Item = Pos>) -> bool {
+  fn could_place_symbol_in_tile(&self, mut pos_iter: impl Iterator<Item = Pos>) -> bool {
     assert!(pos_iter.next().is_none());
     self.is_free()
   }
-  fn try_place_symbol(
+  fn try_place_symbol_in_tile(
     &mut self,
     mut pos_iter: impl Iterator<Item = Pos>,
     symbol: PlayerSymbol,
@@ -174,14 +167,14 @@ impl<TileType: TileTrait> TileTrait for GenericBoard<TileType> {
   fn tile_state(&self) -> TileBoardState {
     self.board_state()
   }
-  fn trivial_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile {
+  fn trivial_tile_in_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> TrivialTile {
     GenericBoard::trivial_tile(self, pos_iter)
   }
 
-  fn could_place_symbol(&self, pos_iter: impl Iterator<Item = Pos>) -> bool {
+  fn could_place_symbol_in_tile(&self, pos_iter: impl Iterator<Item = Pos>) -> bool {
     GenericBoard::could_place_symbol(self, pos_iter)
   }
-  fn try_place_symbol(
+  fn try_place_symbol_in_tile(
     &mut self,
     pos_iter: impl Iterator<Item = Pos>,
     symbol: PlayerSymbol,
@@ -230,6 +223,33 @@ impl From<TrivialTile> for TileBoardState {
       TrivialTile::Free => Self::Free,
       TrivialTile::Won(player) => Self::Won(player),
     }
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct Tiles<T>([T; 9]);
+impl<T, P: Into<Pos>> std::ops::Index<P> for Tiles<T> {
+  type Output = T;
+  fn index(&self, pos: P) -> &Self::Output {
+    &self.0[pos.into().linear_idx()]
+  }
+}
+impl<T, P: Into<Pos>> std::ops::IndexMut<P> for Tiles<T> {
+  fn index_mut(&mut self, pos: P) -> &mut Self::Output {
+    &mut self.0[pos.into().linear_idx()]
+  }
+}
+
+pub struct LineStates([LineState; 8]);
+impl std::ops::Index<Line> for LineStates {
+  type Output = LineState;
+  fn index(&self, line: Line) -> &Self::Output {
+    &self.0[line.idx()]
+  }
+}
+impl std::ops::IndexMut<Line> for LineStates {
+  fn index_mut(&mut self, line: Line) -> &mut Self::Output {
+    &mut self.0[line.idx()]
   }
 }
 

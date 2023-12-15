@@ -1,8 +1,6 @@
 use common::{
-  specific::{
-    game::{RoundOutcome, RoundState},
-    message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  },
+  game::{RoundOutcome, RoundState},
+  message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
 };
 

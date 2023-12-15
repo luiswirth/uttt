@@ -1,5 +1,5 @@
-use super::{board::TileBoardState, pos::Pos};
-use crate::{PlayerSymbol, BOARD_SIDE_LENGTH};
+use super::{pos::Pos, TileBoardState, BOARD_SIDE_LENGTH};
+use crate::PlayerSymbol;
 
 const NLINES: usize = 2 * BOARD_SIDE_LENGTH as usize + 2;
 
@@ -194,7 +194,7 @@ impl From<TileBoardState> for LineState {
 #[cfg(test)]
 mod test {
   use super::LineState;
-  use crate::{BOARD_SIDE_LENGTH, PLAYERS};
+  use crate::{board::BOARD_SIDE_LENGTH, PLAYERS};
 
   #[test]
   fn check_line_state_cominator() {

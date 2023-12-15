@@ -1,12 +1,9 @@
 use crate::{
-  generic::board::{PlaceSymbolError, TileBoardState},
+  board::{PlaceSymbolError, TileBoardState},
   PlayerSymbol,
 };
 
-use super::{
-  board::OuterBoard,
-  pos::{GlobalPos, InnerPos, OuterPos},
-};
+use crate::{GlobalPos, InnerPos, OuterBoard, OuterPos};
 
 pub struct RoundState {
   outer_board: OuterBoard,

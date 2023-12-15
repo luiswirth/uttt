@@ -1,4 +1,4 @@
-use crate::PlayerSymbol;
+use crate::{GlobalPos, PlayerSymbol};
 
 use std::{
   io::{Read, Write},
@@ -7,8 +7,6 @@ use std::{
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::trace;
-
-use super::pos::GlobalPos;
 
 type MessageLength = u32;
 const NBYTES_MESSAGE_LENGTH: usize = std::mem::size_of::<MessageLength>();

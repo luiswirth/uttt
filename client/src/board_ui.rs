@@ -1,10 +1,7 @@
 use common::{
-  generic::board::{TileBoardState, TrivialTile},
-  specific::{
-    game::RoundState,
-    pos::{GlobalPos, InnerPos, OuterPos},
-  },
-  PlayerSymbol,
+  board::{TileBoardState, TrivialTile},
+  game::RoundState,
+  GlobalPos, InnerPos, OuterPos, PlayerSymbol,
 };
 use eframe::egui;
 use egui::{pos2, vec2, Color32, Painter, Rect, Sense, Stroke, Vec2};

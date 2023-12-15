@@ -6,10 +6,8 @@ use crate::{
   util::{choose_random_tile, player_color},
 };
 use common::{
-  specific::{
-    game::{RoundOutcome, RoundState, Stats},
-    message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
-  },
+  game::{RoundOutcome, RoundState, Stats},
+  message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
   PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
 };
 
