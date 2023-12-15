@@ -1,6 +1,6 @@
 use common::{
   specific::{
-    game::{GameOutcome, RoundState},
+    game::{RoundOutcome, RoundState},
     message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
   },
   PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
@@ -106,10 +106,10 @@ impl Server {
     loop {
       let outcome = self.play_round();
       match outcome {
-        GameOutcome::Win(p) => {
+        RoundOutcome::Win(p) => {
           println!("Player {:?} won!", p);
         }
-        GameOutcome::Draw => {
+        RoundOutcome::Draw => {
           println!("Draw!");
         }
       }
@@ -122,7 +122,7 @@ impl Server {
 }
 
 impl Server {
-  fn play_round(&mut self) -> GameOutcome {
+  fn play_round(&mut self) -> RoundOutcome {
     println!("New round started.");
     let starting_player: PlayerSymbol = rand::random();
     let mut round_state = RoundState::new(starting_player);
@@ -136,10 +136,19 @@ impl Server {
       if let Some(outcome) = round_state.outcome() {
         return outcome;
       }
-      let tile_global_pos = self
-        .receive_message(round_state.current_player())
-        .unwrap()
-        .place_symbol_proposal();
+      let tile_global_pos = match self.receive_message(round_state.current_player()).unwrap() {
+        ClientMessage::PlaceSymbolProposal(p) => p,
+        ClientMessage::GiveUp => {
+          self
+            .send_message(
+              &ServerMessage::OtherGiveUp,
+              round_state.current_player().other(),
+            )
+            .unwrap();
+          return RoundOutcome::Win(round_state.current_player().other());
+        }
+        e => panic!("expected `PlaceSymbolProposal` or `GiveUp`, got `{:?}`", e),
+      };
 
       if round_state.try_play_move(tile_global_pos) {
         self

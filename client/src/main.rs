@@ -7,7 +7,7 @@ use crate::{
 };
 use common::{
   specific::{
-    game::{GameOutcome, RoundState, Stats},
+    game::{RoundOutcome, RoundState, Stats},
     message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
   },
   PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
@@ -78,10 +78,10 @@ struct PlayingState {
   this_player: PlayerSymbol,
 
   stats: Stats,
-  round_state: RoundState,
+  round: RoundState,
 
   can_place_symbol: bool,
-  stats_updated: bool,
+  outcome: Option<RoundOutcome>,
 }
 
 impl eframe::App for Client {
@@ -183,7 +183,7 @@ impl Client {
         ui.add_space(50.0);
         ui.heading("Waiting for other player...");
         ui.add_space(50.0);
-        build_stats_ui(ui, &state.stats)
+        build_stats_ui(ui, &state.stats, state.this_player);
       })
     });
 
@@ -198,9 +198,9 @@ impl Client {
         msg_handler: state.msg_handler,
         this_player: state.this_player,
         stats: state.stats,
-        round_state,
+        round: round_state,
         can_place_symbol: true,
-        stats_updated: false,
+        outcome: None,
       })
     } else {
       Client::WaitingForGameStart(state)
@@ -215,7 +215,7 @@ impl Client {
         ui.vertical_centered(|ui| {
           ui.add_space(10.0);
 
-          build_stats_ui(ui, &state.stats);
+          build_stats_ui(ui, &state.stats, state.this_player);
 
           ui.add_space(20.0);
           ui.separator();
@@ -231,18 +231,13 @@ impl Client {
           ui.separator();
           ui.add_space(20.0);
 
-          if let Some(outcome) = state.round_state.outcome() {
-            if !state.stats_updated {
-              state.stats_updated = true;
-              state.stats.update(outcome);
-            }
-
+          if let Some(outcome) = state.outcome {
             ui.heading(match outcome {
-              GameOutcome::Win(p) => match p == state.this_player {
+              RoundOutcome::Win(p) => match p == state.this_player {
                 true => "You won!".to_string(),
                 false => "You lost!".to_string(),
               },
-              GameOutcome::Draw => "Draw!".to_string(),
+              RoundOutcome::Draw => "Draw!".to_string(),
             });
 
             if ui.button("Play again").clicked() || cfg!(feature = "auto_next_round") {
@@ -257,18 +252,27 @@ impl Client {
           } else {
             ui.label(egui::RichText::new("Turn of").size(30.0));
             ui.label(
-              egui::RichText::new(if state.this_player == state.round_state.current_player() {
+              egui::RichText::new(if state.this_player == state.round.current_player() {
                 "YOU"
               } else {
                 "THEM"
               })
-              .color(player_color(state.round_state.current_player()))
+              .color(player_color(state.round.current_player()))
               .size(50.0),
             );
             let (response, painter) =
               ui.allocate_painter(egui::vec2(100.0, 100.0), egui::Sense::hover());
             let rect = response.rect;
-            board_ui::draw_symbol(&painter, rect, state.round_state.current_player());
+            board_ui::draw_symbol(&painter, rect, state.round.current_player());
+
+            if state.round.current_player() == state.this_player && ui.button("Give up").clicked() {
+              let msg = ClientMessage::GiveUp;
+              state.msg_handler.try_write_message(Some(msg)).unwrap();
+              let outcome = state
+                .outcome
+                .insert(RoundOutcome::Win(state.this_player.other()));
+              state.stats.update(*outcome);
+            }
           }
 
           Err(state)
@@ -282,19 +286,19 @@ impl Client {
     };
 
     egui::CentralPanel::default().show(ctx, |ui| {
-      let mut chosen_tile = build_board_ui(ui, &state.round_state, state.this_player);
+      let mut chosen_tile = build_board_ui(ui, &state.round, state.this_player);
 
-      if state.round_state.outcome().is_some() {
+      if state.outcome.is_some() {
         return;
       }
 
       if cfg!(feature = "auto_play") {
-        chosen_tile = Some(choose_random_tile(&state.round_state));
+        chosen_tile = Some(choose_random_tile(&state.round));
       }
 
-      if state.this_player == state.round_state.current_player() && state.can_place_symbol {
+      if state.this_player == state.round.current_player() && state.can_place_symbol {
         if let Some(chosen_tile) = chosen_tile {
-          if state.round_state.could_play_move(chosen_tile) {
+          if state.round.could_play_move(chosen_tile) {
             let msg = ClientMessage::PlaceSymbolProposal(chosen_tile);
             state.msg_handler.try_write_message(Some(msg)).unwrap();
             state.can_place_symbol = false;
@@ -309,28 +313,49 @@ impl Client {
       {
         match msg {
           ServerMessage::PlaceSymbolAccepted(global_pos) => {
-            assert!(state.round_state.try_play_move(global_pos));
+            assert!(state.round.try_play_move(global_pos));
             state.can_place_symbol = true;
           }
-          _ => panic!("unexpected message: {:?}", msg),
+          ServerMessage::OtherGiveUp => {
+            state.outcome = Some(RoundOutcome::Win(state.this_player));
+          }
+          _ => panic!(
+            "expected `PlaceSymbolAccepted` or `OtherGiveUp`, got `{:?}`",
+            msg
+          ),
         }
       }
+
+      state.outcome = state.outcome.or(state.round.outcome());
+      if let Some(outcome) = state.outcome {
+        state.stats.update(outcome);
+      };
     });
     Client::Playing(state)
   }
 }
 
-fn build_stats_ui(ui: &mut egui::Ui, stats: &Stats) {
+fn build_stats_ui(ui: &mut egui::Ui, stats: &Stats, this_player: PlayerSymbol) {
   ui.label(egui::RichText::new("Stats").size(30.0));
   ui.label(format!("Game #{}", stats.ngames));
   ui.label(format!(
-    "Wins {}: {}",
+    "Wins {}/{}: {}",
     PLAYERS[0].as_char(),
+    if this_player == PLAYERS[0] {
+      "YOU"
+    } else {
+      "THEM"
+    },
     stats.scores[0]
   ));
   ui.label(format!(
-    "Wins {}: {}",
+    "Wins {}/{}: {}",
     PLAYERS[1].as_char(),
+    if this_player == PLAYERS[1] {
+      "YOU"
+    } else {
+      "THEM"
+    },
     stats.scores[1]
   ));
 }

@@ -48,11 +48,11 @@ impl RoundState {
     self.curr_outer_pos
   }
 
-  pub fn outcome(&self) -> Option<GameOutcome> {
+  pub fn outcome(&self) -> Option<RoundOutcome> {
     match self.outer_board.board_state() {
-      TileBoardState::Won(p) => Some(GameOutcome::Win(p)),
-      TileBoardState::Drawn => Some(GameOutcome::Draw),
-      TileBoardState::FullyDrawn => Some(GameOutcome::Draw),
+      TileBoardState::Won(p) => Some(RoundOutcome::Win(p)),
+      TileBoardState::Drawn => Some(RoundOutcome::Draw),
+      TileBoardState::FullyDrawn => Some(RoundOutcome::Draw),
       _ => None,
     }
   }
@@ -82,7 +82,7 @@ impl RoundState {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum GameOutcome {
+pub enum RoundOutcome {
   Win(PlayerSymbol),
   Draw,
 }
@@ -93,11 +93,11 @@ pub struct Stats {
   pub scores: [usize; 2],
 }
 impl Stats {
-  pub fn update(&mut self, outcome: GameOutcome) {
+  pub fn update(&mut self, outcome: RoundOutcome) {
     self.ngames += 1;
     match outcome {
-      GameOutcome::Win(p) => self.scores[p as usize] += 1,
-      GameOutcome::Draw => (),
+      RoundOutcome::Win(p) => self.scores[p as usize] += 1,
+      RoundOutcome::Draw => (),
     }
   }
 }

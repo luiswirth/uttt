@@ -19,6 +19,7 @@ pub enum ServerMessage {
   GameStart(PlayerSymbol),
   PlaceSymbolRejected,
   PlaceSymbolAccepted(GlobalPos),
+  OtherGiveUp,
 }
 
 impl ServerMessage {
@@ -46,12 +47,19 @@ impl ServerMessage {
       _ => panic!("expected `PlaceSymbolAccepted`, got `{:?}`", self),
     }
   }
+  pub fn other_give_up(self) {
+    match self {
+      Self::OtherGiveUp => (),
+      _ => panic!("expected `OtherGiveUp`, got `{:?}`", self),
+    }
+  }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
   PlaceSymbolProposal(GlobalPos),
   StartGame,
+  GiveUp,
 }
 
 impl ClientMessage {
@@ -65,6 +73,12 @@ impl ClientMessage {
     match self {
       Self::StartGame => (),
       _ => panic!("expected `StartGame`, got `{:?}`", self),
+    }
+  }
+  pub fn give_up(self) {
+    match self {
+      Self::GiveUp => (),
+      _ => panic!("expected `GiveUp`, got `{:?}`", self),
     }
   }
 }
