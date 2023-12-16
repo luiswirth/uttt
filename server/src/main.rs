@@ -1,10 +1,10 @@
 mod util;
 
 use common::{
-  game::{RoundOutcome, RoundState},
+  game::{PlayerAction, RoundOutcome, RoundState},
   msg::{
-    receive_msg_from_stream, send_msg_to_stream, ClientReqRoundStart, MsgPlayerAction,
-    ServerMsgRoundStart, ServerMsgSymbolAssignment,
+    receive_msg_from_stream, send_msg_to_stream, ClientMsgAction, ClientReqRoundStart,
+    ServerMsgOpponentAction, ServerMsgRoundStart, ServerMsgSymbolAssignment,
   },
   PlayerSymbol, DEFAULT_SOCKET_ADDR, PLAYERS,
 };
@@ -107,19 +107,16 @@ impl Server {
         return outcome;
       }
 
-      match self.receive_msg(round_state.current_player()).unwrap() {
-        msg @ MsgPlayerAction::MakeMove(chosen_tile) => {
-          self
-            .send_msg(&msg, round_state.current_player().other())
-            .unwrap();
-          round_state.try_play_move(chosen_tile).unwrap();
-        }
-        msg @ MsgPlayerAction::GiveUp => {
-          self
-            .send_msg(&msg, round_state.current_player().other())
-            .unwrap();
-          return RoundOutcome::Win(round_state.current_player().other());
-        }
+      let ClientMsgAction(action) = self.receive_msg(round_state.current_player()).unwrap();
+
+      let opponent_msg = ServerMsgOpponentAction(action);
+      self
+        .send_msg(&opponent_msg, round_state.current_player().other())
+        .unwrap();
+
+      match action {
+        PlayerAction::MakeMove(chosen_tile) => round_state.try_play_move(chosen_tile).unwrap(),
+        PlayerAction::GiveUp => return RoundOutcome::Win(round_state.current_player().other()),
       };
     }
   }

@@ -1,4 +1,4 @@
-use crate::{GlobalPos, PlayerSymbol};
+use crate::{game::PlayerAction, PlayerSymbol};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
@@ -16,28 +16,13 @@ pub struct ServerMsgSymbolAssignment(pub PlayerSymbol);
 pub struct ServerMsgRoundStart(pub PlayerSymbol);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ServerMsgOpponentAction(pub PlayerAction);
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ClientReqRoundStart;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum MsgPlayerAction {
-  MakeMove(GlobalPos),
-  GiveUp,
-}
-
-impl MsgPlayerAction {
-  pub fn make_move(self) -> GlobalPos {
-    match self {
-      Self::MakeMove(p) => p,
-      _ => panic!("unexpected player action: {:?}", self),
-    }
-  }
-  pub fn opponent_give_up(self) {
-    match self {
-      Self::GiveUp => (),
-      _ => panic!("unexpected player action: {:?}", self),
-    }
-  }
-}
+pub struct ClientMsgAction(pub PlayerAction);
 
 /// Sends a message (any serializable type) to the given stream.
 /// This function uses `write_all`, so it will block until the full message is sent.

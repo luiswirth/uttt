@@ -6,11 +6,11 @@ pub fn build_stats_ui(ui: &mut egui::Ui, stats: &Stats, this_player: PlayerSymbo
   let text = |s| egui::RichText::new(s).size(20.0);
   ui.label(text(format!("Game #{}", stats.ngames)));
   ui.label(text(format!(
-    "YOUR WINS: {}",
+    "Your Wins: {}",
     stats.scores[this_player.idx()]
   )));
   ui.label(text(format!(
-    "THEIR WINS: {}",
+    "Their Wins: {}",
     stats.scores[this_player.other().idx()],
   )));
 }

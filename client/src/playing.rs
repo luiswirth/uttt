@@ -9,9 +9,11 @@ use crate::{
 };
 
 use common::{
-  game::{RoundOutcome, RoundState, Stats},
-  msg::{ClientReqRoundStart, MessageIoHandlerNoBlocking, MsgPlayerAction},
-  GlobalPos, PlayerSymbol,
+  game::{PlayerAction, RoundOutcome, RoundState, Stats},
+  msg::{
+    ClientMsgAction, ClientReqRoundStart, MessageIoHandlerNoBlocking, ServerMsgOpponentAction,
+  },
+  PlayerSymbol,
 };
 
 use eframe::egui;
@@ -46,9 +48,8 @@ impl PlayingState {
   pub fn update(mut self, ctx: &egui::Context) -> Client {
     self.msg_handler.try_write_msg::<()>(None).unwrap();
 
+    let mut action = None;
     let mut should_restart_game = false;
-    let mut give_up = false;
-    let mut chosen_tile = None;
 
     egui::SidePanel::left("left-panel").show(ctx, |ui| {
       ui.vertical_centered(|ui| {
@@ -99,14 +100,15 @@ impl PlayingState {
           board_ui::draw_symbol(&painter, rect, self.round.current_player());
 
           if self.round.current_player() == self.this_player && ui.button("Give up").clicked() {
-            give_up = true;
+            action = Some(PlayerAction::GiveUp);
           }
         }
       })
     });
 
     egui::CentralPanel::default().show(ctx, |ui| {
-      chosen_tile = build_board_ui(ui, &self.round, self.this_player);
+      let chosen_tile = build_board_ui(ui, &self.round, self.this_player);
+      action = action.or(chosen_tile.map(PlayerAction::MakeMove));
     });
 
     if should_restart_game {
@@ -121,50 +123,47 @@ impl PlayingState {
       ));
     }
 
-    Self::update_round(&mut self, chosen_tile, give_up);
+    if self.outcome.is_none() {
+      self.update_round(action);
+    }
 
     Client::Playing(self)
   }
 
-  fn update_round(&mut self, mut clicked_tile: Option<GlobalPos>, give_up: bool) {
-    if self.outcome.is_some() {
-      return;
-    }
+  fn update_round(&mut self, mut action: Option<PlayerAction>) {
+    let my_turn = self.round.current_player() == self.this_player;
 
-    if give_up {
-      let outcome = self
-        .outcome
-        .insert(RoundOutcome::Win(self.this_player.other()));
-      self.stats.update(*outcome);
-
-      self
-        .msg_handler
-        .try_write_msg(Some(MsgPlayerAction::GiveUp))
-        .unwrap();
-
-      return;
-    }
-
-    if cfg!(feature = "auto_play") {
-      clicked_tile = Some(choose_random_tile(&self.round));
-    }
-
-    if self.round.current_player() == self.this_player {
-      if let Some(chosen_tile) = clicked_tile {
-        if self.round.try_play_move(chosen_tile).is_ok() {
-          self
-            .msg_handler
-            .try_write_msg(Some(MsgPlayerAction::MakeMove(chosen_tile)))
-            .unwrap();
-        }
+    if my_turn {
+      if cfg!(feature = "auto_play") {
+        action = Some(PlayerAction::MakeMove(choose_random_tile(&self.round)));
       }
     } else {
-      #[allow(clippy::collapsible_else_if)]
-      if let Some(action) = self.msg_handler.try_read_msg().unwrap() {
-        match action {
-          MsgPlayerAction::MakeMove(global_pos) => self.round.try_play_move(global_pos).unwrap(),
-          MsgPlayerAction::GiveUp => self.outcome = Some(RoundOutcome::Win(self.this_player)),
+      debug_assert!(
+        action.is_none(),
+        "UI should not allow actions, when it's not your turn."
+      );
+      let msg = self.msg_handler.try_read_msg().unwrap();
+      action = msg.map(|ServerMsgOpponentAction(action)| action);
+    }
+
+    if let Some(action) = action {
+      let succeded = match action {
+        PlayerAction::MakeMove(chosen_tile) => self.round.try_play_move(chosen_tile).is_ok(),
+        PlayerAction::GiveUp => {
+          self.outcome = Some(RoundOutcome::Win(self.round.current_player().other()));
+          true
         }
+      };
+
+      if my_turn {
+        if succeded {
+          self
+            .msg_handler
+            .try_write_msg(Some(ClientMsgAction(action)))
+            .unwrap();
+        }
+      } else {
+        assert!(succeded);
       }
     }
 

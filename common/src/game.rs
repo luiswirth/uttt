@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
   board::{PlaceSymbolError, TileBoardState},
   PlayerSymbol,
@@ -83,10 +85,25 @@ impl RoundState {
   }
 }
 
-#[derive(Debug)]
-pub enum MoveError {
-  PlaceSymbol(PlaceSymbolError),
-  WrongOuterPos,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum PlayerAction {
+  MakeMove(GlobalPos),
+  GiveUp,
+}
+
+impl PlayerAction {
+  pub fn make_move(self) -> GlobalPos {
+    match self {
+      Self::MakeMove(p) => p,
+      _ => panic!("unexpected player action: {:?}", self),
+    }
+  }
+  pub fn opponent_give_up(self) {
+    match self {
+      Self::GiveUp => (),
+      _ => panic!("unexpected player action: {:?}", self),
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -108,4 +125,10 @@ impl Stats {
       RoundOutcome::Draw => (),
     }
   }
+}
+
+#[derive(Debug)]
+pub enum MoveError {
+  PlaceSymbol(PlaceSymbolError),
+  WrongOuterPos,
 }
