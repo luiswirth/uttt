@@ -10,7 +10,7 @@ use crate::{
 
 use common::{
   game::{RoundOutcome, RoundState, Stats},
-  message::{ClientMessage, MessageIoHandlerNoBlocking, ServerMessage},
+  msg::{ClientReqRoundStart, MessageIoHandlerNoBlocking, MsgPlayerAction},
   GlobalPos, PlayerSymbol,
 };
 
@@ -42,7 +42,7 @@ impl PlayingState {
   }
 
   pub fn update(mut self, ctx: &egui::Context) -> Client {
-    self.msg_handler.try_write_message::<()>(None).unwrap();
+    self.msg_handler.try_write_msg::<()>(None).unwrap();
 
     let mut should_restart_game = false;
     egui::SidePanel::left("left-panel").show(ctx, |ui| {
@@ -94,8 +94,10 @@ impl PlayingState {
           board_ui::draw_symbol(&painter, rect, self.round.current_player());
 
           if self.round.current_player() == self.this_player && ui.button("Give up").clicked() {
-            let msg = ClientMessage::GiveUp;
-            self.msg_handler.try_write_message(Some(msg)).unwrap();
+            self
+              .msg_handler
+              .try_write_msg(Some(MsgPlayerAction::GiveUp))
+              .unwrap();
             let outcome = self
               .outcome
               .insert(RoundOutcome::Win(self.this_player.other()));
@@ -111,8 +113,10 @@ impl PlayingState {
     });
 
     if should_restart_game {
-      let msg = ClientMessage::StartRoundRequest;
-      self.msg_handler.try_write_message(Some(msg)).unwrap();
+      self
+        .msg_handler
+        .try_write_msg(Some(ClientReqRoundStart))
+        .unwrap();
       return Client::WaitingForGameStart(WaitingState::new(self.msg_handler, self.this_player));
     }
 
@@ -131,25 +135,18 @@ impl PlayingState {
     if state.round.current_player() == state.this_player {
       if let Some(chosen_tile) = clicked_tile {
         if state.round.try_play_move(chosen_tile).is_ok() {
-          let msg = ClientMessage::PlaceSymbol(chosen_tile);
-          state.msg_handler.try_write_message(Some(msg)).unwrap();
+          state
+            .msg_handler
+            .try_write_msg(Some(MsgPlayerAction::MakeMove(chosen_tile)))
+            .unwrap();
         }
       }
     } else {
       #[allow(clippy::collapsible_else_if)]
-      if let Some(msg) = state
-        .msg_handler
-        .try_read_message::<ServerMessage>()
-        .unwrap()
-      {
-        match msg {
-          ServerMessage::OpponentPlaceSymbol(global_pos) => {
-            state.round.try_play_move(global_pos).unwrap();
-          }
-          ServerMessage::OpponentGiveUp => {
-            state.outcome = Some(RoundOutcome::Win(state.this_player));
-          }
-          _ => panic!("unexpected message: `{:?}`", msg),
+      if let Some(action) = state.msg_handler.try_read_msg().unwrap() {
+        match action {
+          MsgPlayerAction::MakeMove(global_pos) => state.round.try_play_move(global_pos).unwrap(),
+          MsgPlayerAction::GiveUp => state.outcome = Some(RoundOutcome::Win(state.this_player)),
         }
       }
     }

@@ -1,6 +1,6 @@
 pub mod board;
 pub mod game;
-pub mod message;
+pub mod msg;
 
 use std::net::{Ipv4Addr, SocketAddrV4};
 

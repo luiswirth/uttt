@@ -1,74 +1,40 @@
 use crate::{GlobalPos, PlayerSymbol};
 
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
   io::{Read, Write},
   net::TcpStream,
 };
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-
 type MessageLength = u32;
 const NBYTES_MESSAGE_LENGTH: usize = std::mem::size_of::<MessageLength>();
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ServerMessage {
-  SymbolAssignment(PlayerSymbol),
-  RoundStart(PlayerSymbol),
-  OpponentPlaceSymbol(GlobalPos),
-  OpponentGiveUp,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ServerMsgSymbolAssignment(pub PlayerSymbol);
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ServerMsgRoundStart(pub PlayerSymbol);
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ClientReqRoundStart;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum MsgPlayerAction {
+  MakeMove(GlobalPos),
+  GiveUp,
 }
 
-impl ServerMessage {
-  pub fn symbol_assignment(self) -> PlayerSymbol {
+impl MsgPlayerAction {
+  pub fn make_move(self) -> GlobalPos {
     match self {
-      Self::SymbolAssignment(s) => s,
-      _ => panic!("expected `SymbolAssignment`, got `{:?}`", self),
-    }
-  }
-  pub fn round_start(self) -> PlayerSymbol {
-    match self {
-      Self::RoundStart(s) => s,
-      _ => panic!("wong message: expected `GameStart`, got `{:?}`", self),
-    }
-  }
-  pub fn opponent_place_symbol(self) -> GlobalPos {
-    match self {
-      Self::OpponentPlaceSymbol(p) => p,
-      _ => panic!("expected `PlaceSymbolAccepted`, got `{:?}`", self),
+      Self::MakeMove(p) => p,
+      _ => panic!("unexpected player action: {:?}", self),
     }
   }
   pub fn opponent_give_up(self) {
     match self {
-      Self::OpponentGiveUp => (),
-      _ => panic!("expected `OtherGiveUp`, got `{:?}`", self),
-    }
-  }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ClientMessage {
-  PlaceSymbol(GlobalPos),
-  StartRoundRequest,
-  GiveUp,
-}
-
-impl ClientMessage {
-  pub fn place_symbol(self) -> GlobalPos {
-    match self {
-      Self::PlaceSymbol(p) => p,
-      _ => panic!("expected `PlaceSymbolProposal`, got `{:?}`", self),
-    }
-  }
-  pub fn start_round_request(self) {
-    match self {
-      Self::StartRoundRequest => (),
-      _ => panic!("expected `StartGame`, got `{:?}`", self),
-    }
-  }
-  pub fn give_up(self) {
-    match self {
       Self::GiveUp => (),
-      _ => panic!("expected `GiveUp`, got `{:?}`", self),
+      _ => panic!("unexpected player action: {:?}", self),
     }
   }
 }
@@ -76,7 +42,7 @@ impl ClientMessage {
 /// Sends a message (any serializable type) to the given stream.
 /// This function uses `write_all`, so it will block until the full message is sent.
 /// Therefore it is not suitable for `no_blocking` streams.
-pub fn send_message_to_stream<Msg: Serialize + std::fmt::Debug>(
+pub fn send_msg_to_stream<Msg: Serialize>(
   msg: &Msg,
   stream: &mut TcpStream,
 ) -> std::io::Result<()> {
@@ -91,7 +57,7 @@ pub fn send_message_to_stream<Msg: Serialize + std::fmt::Debug>(
 /// Receives a message (any serializable type) from the given stream.
 /// This function uses `read_exact`, so it will block until the full message is received.
 /// Therefore it is not suitable for `no_blocking` streams.
-pub fn receive_message_from_stream<Msg: DeserializeOwned + std::fmt::Debug>(
+pub fn receive_msg_from_stream<Msg: DeserializeOwned>(
   stream: &mut TcpStream,
 ) -> std::io::Result<Msg> {
   let mut msg_len_bytes = [0u8; NBYTES_MESSAGE_LENGTH];
@@ -126,7 +92,7 @@ impl MessageIoHandlerNoBlocking {
   /// Does partial reads from the stream until to receive messages.
   /// Returns `Ok(Some(msg))` if a full message was built, `Err(e)` if an error occurred.
   /// If the message is not complete, returns `Ok(None)`.
-  pub fn try_read_message<Msg: DeserializeOwned>(&mut self) -> std::io::Result<Option<Msg>> {
+  pub fn try_read_msg<Msg: DeserializeOwned>(&mut self) -> std::io::Result<Option<Msg>> {
     // do a single read
     let mut read_buffer = [0u8; SINGLE_READ_BUFFER_SIZE];
     let nbytes_read = match self.stream.read(&mut read_buffer) {
@@ -161,7 +127,7 @@ impl MessageIoHandlerNoBlocking {
 
   /// Does partial writes to the stream until all messages are sent.
   /// Returns `Ok(true)` if all messages were sent, `Ok(false)` if there are still messages to send, `Err(e)` if an error occurred.
-  pub fn try_write_message<Msg: Serialize>(&mut self, msg: Option<Msg>) -> std::io::Result<bool> {
+  pub fn try_write_msg<Msg: Serialize>(&mut self, msg: Option<Msg>) -> std::io::Result<bool> {
     if let Some(msg) = msg {
       let msg_string = ron::to_string(&msg).expect("serialization failed");
       let msg_bytes = msg_string.as_bytes();

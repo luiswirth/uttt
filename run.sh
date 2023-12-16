@@ -12,8 +12,8 @@ cleanup() {
 # trap the SIGINT signal (Ctrl-C)
 trap cleanup INT
 
-cargo r --bin uttt-server --features "$server_features" &
-cargo r --bin uttt-client --features "$client0_features" &
-cargo r --bin uttt-client --features "$client1_features" &
+cargo r --release --bin uttt-server --features "$server_features" &
+cargo r --release --bin uttt-client --features "$client0_features" &
+cargo r --release --bin uttt-client --features "$client1_features" &
 
 wait

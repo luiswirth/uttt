@@ -8,6 +8,7 @@ edition = "2021"
 common = { package = "uttt-common", path = "../common" }
 
 rand = "0.8.5"
+serde = "1.0.193"
 
 [features]
 auto_connect = []

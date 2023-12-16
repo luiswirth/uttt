@@ -2,7 +2,10 @@ mod util;
 
 use common::{
   game::{RoundOutcome, RoundState},
-  message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
+  msg::{
+    receive_msg_from_stream, send_msg_to_stream, ClientReqRoundStart, MsgPlayerAction,
+    ServerMsgRoundStart, ServerMsgSymbolAssignment,
+  },
   PlayerSymbol, DEFAULT_SOCKET_ADDR, PLAYERS,
 };
 
@@ -49,7 +52,7 @@ impl Server {
       .take(2)
       .enumerate()
       .map(|(i, mut stream)| {
-        send_message_to_stream(&ServerMessage::SymbolAssignment(curr_player), &mut stream)
+        send_msg_to_stream(&ServerMsgSymbolAssignment(curr_player), &mut stream)
           .expect("Sending message failed.");
         println!("Player{} connected {}", i, stream.peer_addr().unwrap());
 
@@ -84,7 +87,7 @@ impl Server {
       }
 
       for player in PLAYERS {
-        self.receive_message(player).unwrap().start_round_request();
+        let _: ClientReqRoundStart = self.receive_msg(player).unwrap();
       }
     }
   }
@@ -95,7 +98,7 @@ impl Server {
     let mut round_state = RoundState::new(starting_player);
 
     self
-      .broadcast_message(&ServerMessage::RoundStart(starting_player))
+      .broadcast_msg(&ServerMsgRoundStart(starting_player))
       .unwrap();
 
     // main round loop
@@ -104,26 +107,19 @@ impl Server {
         return outcome;
       }
 
-      match self.receive_message(round_state.current_player()).unwrap() {
-        ClientMessage::PlaceSymbol(chosen_tile) => {
+      match self.receive_msg(round_state.current_player()).unwrap() {
+        msg @ MsgPlayerAction::MakeMove(chosen_tile) => {
           self
-            .send_message(
-              &ServerMessage::OpponentPlaceSymbol(chosen_tile),
-              round_state.current_player().other(),
-            )
+            .send_msg(&msg, round_state.current_player().other())
             .unwrap();
           round_state.try_play_move(chosen_tile).unwrap();
         }
-        ClientMessage::GiveUp => {
+        msg @ MsgPlayerAction::GiveUp => {
           self
-            .send_message(
-              &ServerMessage::OpponentGiveUp,
-              round_state.current_player().other(),
-            )
+            .send_msg(&msg, round_state.current_player().other())
             .unwrap();
           return RoundOutcome::Win(round_state.current_player().other());
         }
-        e => panic!("unexpected meessage: `{:?}`", e),
       };
     }
   }
@@ -132,15 +128,18 @@ impl Server {
     &mut self.streams[player.idx()]
   }
 
-  fn receive_message(&mut self, player: PlayerSymbol) -> io::Result<ClientMessage> {
-    receive_message_from_stream(self.stream_mut(player))
+  fn receive_msg<Msg: serde::de::DeserializeOwned>(
+    &mut self,
+    player: PlayerSymbol,
+  ) -> io::Result<Msg> {
+    receive_msg_from_stream(self.stream_mut(player))
   }
-  fn send_message(&mut self, message: &ServerMessage, player: PlayerSymbol) -> io::Result<()> {
-    send_message_to_stream(message, self.stream_mut(player))
+  fn send_msg<Msg: serde::Serialize>(&mut self, msg: &Msg, player: PlayerSymbol) -> io::Result<()> {
+    send_msg_to_stream(msg, self.stream_mut(player))
   }
-  fn broadcast_message(&mut self, message: &ServerMessage) -> io::Result<()> {
+  fn broadcast_msg<Msg: serde::Serialize>(&mut self, msge: &Msg) -> io::Result<()> {
     for p in PLAYERS {
-      self.send_message(message, p)?;
+      self.send_msg(msge, p)?;
     }
     Ok(())
   }

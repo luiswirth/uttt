@@ -1798,6 +1798,7 @@ name = "uttt-server"
 version = "0.1.0"
 dependencies = [
  "rand",
+ "serde",
  "uttt-common",
 ]
 

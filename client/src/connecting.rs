@@ -1,7 +1,7 @@
 use crate::{Client, WaitingState};
 
 use common::{
-  message::{MessageIoHandlerNoBlocking, ServerMessage},
+  msg::{MessageIoHandlerNoBlocking, ServerMsgSymbolAssignment},
   DEFAULT_IP, DEFAULT_PORT,
 };
 
@@ -78,8 +78,7 @@ impl ConnectingState {
     });
 
     if let Some(mut msg_handler) = self.msg_handler {
-      if let Some(msg) = msg_handler.try_read_message::<ServerMessage>().unwrap() {
-        let symbol = msg.symbol_assignment();
+      if let Some(ServerMsgSymbolAssignment(symbol)) = msg_handler.try_read_msg().unwrap() {
         return Client::WaitingForGameStart(WaitingState::new(msg_handler, symbol));
       } else {
         self.msg_handler = Some(msg_handler);

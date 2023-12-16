@@ -2,7 +2,7 @@ use crate::{playing::PlayingState, util::stats_ui::build_stats_ui, Client};
 
 use common::{
   game::{RoundState, Stats},
-  message::{MessageIoHandlerNoBlocking, ServerMessage},
+  msg::{MessageIoHandlerNoBlocking, ServerMsgRoundStart},
   PlayerSymbol,
 };
 
@@ -34,12 +34,7 @@ impl WaitingState {
       })
     });
 
-    if let Some(msg) = self
-      .msg_handler
-      .try_read_message::<ServerMessage>()
-      .unwrap()
-    {
-      let starting_player = msg.round_start();
+    if let Some(ServerMsgRoundStart(starting_player)) = self.msg_handler.try_read_msg().unwrap() {
       let round_state = RoundState::new(starting_player);
       return Client::Playing(PlayingState::new(
         self.msg_handler,
