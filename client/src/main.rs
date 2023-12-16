@@ -10,6 +10,15 @@ use std::mem;
 
 use eframe::egui;
 
+fn main() {
+  eframe::run_native(
+    "UTTT",
+    Default::default(),
+    Box::new(|cc| Box::new(Client::new(cc))),
+  )
+  .unwrap();
+}
+
 pub enum Client {
   Connecting(ConnectingState),
   WaitingForGameStart(WaitingState),
@@ -48,17 +57,4 @@ impl Client {
       Client::Playing(state) => state.update(ctx),
     }
   }
-}
-
-fn main() {
-  tracing_subscriber::fmt()
-    .with_max_level(tracing::Level::INFO)
-    .init();
-
-  eframe::run_native(
-    "UTTT",
-    Default::default(),
-    Box::new(|cc| Box::new(Client::new(cc))),
-  )
-  .unwrap();
 }

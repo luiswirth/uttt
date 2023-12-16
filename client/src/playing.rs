@@ -23,7 +23,6 @@ pub struct PlayingState {
   stats: Stats,
   round: RoundState,
 
-  can_place_symbol: bool,
   outcome: Option<RoundOutcome>,
 }
 
@@ -38,7 +37,6 @@ impl PlayingState {
       this_player,
       stats: Stats::default(),
       round,
-      can_place_symbol: true,
       outcome: None,
     }
   }
@@ -130,33 +128,29 @@ impl PlayingState {
       clicked_tile = Some(choose_random_tile(&state.round));
     }
 
-    if state.this_player == state.round.current_player() && state.can_place_symbol {
+    if state.round.current_player() == state.this_player {
       if let Some(chosen_tile) = clicked_tile {
-        if state.round.could_play_move(chosen_tile) {
-          let msg = ClientMessage::PlaceSymbolProposal(chosen_tile);
+        if state.round.try_play_move(chosen_tile).is_ok() {
+          let msg = ClientMessage::PlaceSymbol(chosen_tile);
           state.msg_handler.try_write_message(Some(msg)).unwrap();
-          state.can_place_symbol = false;
         }
       }
-    }
-
-    if let Some(msg) = state
-      .msg_handler
-      .try_read_message::<ServerMessage>()
-      .unwrap()
-    {
-      match msg {
-        ServerMessage::PlaceSymbolAccepted(global_pos) => {
-          state.round.try_play_move(global_pos).unwrap();
-          state.can_place_symbol = true;
+    } else {
+      #[allow(clippy::collapsible_else_if)]
+      if let Some(msg) = state
+        .msg_handler
+        .try_read_message::<ServerMessage>()
+        .unwrap()
+      {
+        match msg {
+          ServerMessage::OpponentPlaceSymbol(global_pos) => {
+            state.round.try_play_move(global_pos).unwrap();
+          }
+          ServerMessage::OpponentGiveUp => {
+            state.outcome = Some(RoundOutcome::Win(state.this_player));
+          }
+          _ => panic!("unexpected message: `{:?}`", msg),
         }
-        ServerMessage::OtherGiveUp => {
-          state.outcome = Some(RoundOutcome::Win(state.this_player));
-        }
-        _ => panic!(
-          "expected `PlaceSymbolAccepted` or `OtherGiveUp`, got `{:?}`",
-          msg
-        ),
       }
     }
 

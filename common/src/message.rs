@@ -6,7 +6,6 @@ use std::{
 };
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tracing::trace;
 
 type MessageLength = u32;
 const NBYTES_MESSAGE_LENGTH: usize = std::mem::size_of::<MessageLength>();
@@ -15,9 +14,8 @@ const NBYTES_MESSAGE_LENGTH: usize = std::mem::size_of::<MessageLength>();
 pub enum ServerMessage {
   SymbolAssignment(PlayerSymbol),
   RoundStart(PlayerSymbol),
-  PlaceSymbolRejected,
-  PlaceSymbolAccepted(GlobalPos),
-  OtherGiveUp,
+  OpponentPlaceSymbol(GlobalPos),
+  OpponentGiveUp,
 }
 
 impl ServerMessage {
@@ -33,21 +31,15 @@ impl ServerMessage {
       _ => panic!("wong message: expected `GameStart`, got `{:?}`", self),
     }
   }
-  pub fn place_symbol_rejected(self) {
+  pub fn opponent_place_symbol(self) -> GlobalPos {
     match self {
-      Self::PlaceSymbolRejected => (),
-      _ => panic!("expected `PlaceSymbolRejected`, got `{:?}`", self),
-    }
-  }
-  pub fn place_symbol_accepted(self) -> GlobalPos {
-    match self {
-      Self::PlaceSymbolAccepted(p) => p,
+      Self::OpponentPlaceSymbol(p) => p,
       _ => panic!("expected `PlaceSymbolAccepted`, got `{:?}`", self),
     }
   }
-  pub fn other_give_up(self) {
+  pub fn opponent_give_up(self) {
     match self {
-      Self::OtherGiveUp => (),
+      Self::OpponentGiveUp => (),
       _ => panic!("expected `OtherGiveUp`, got `{:?}`", self),
     }
   }
@@ -55,15 +47,15 @@ impl ServerMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
-  PlaceSymbolProposal(GlobalPos),
+  PlaceSymbol(GlobalPos),
   StartRoundRequest,
   GiveUp,
 }
 
 impl ClientMessage {
-  pub fn place_symbol_proposal(self) -> GlobalPos {
+  pub fn place_symbol(self) -> GlobalPos {
     match self {
-      Self::PlaceSymbolProposal(p) => p,
+      Self::PlaceSymbol(p) => p,
       _ => panic!("expected `PlaceSymbolProposal`, got `{:?}`", self),
     }
   }
@@ -94,11 +86,6 @@ pub fn send_message_to_stream<Msg: Serialize + std::fmt::Debug>(
   let msg_len_bytes = msg_len.to_be_bytes();
   stream.write_all(&msg_len_bytes)?;
   stream.write_all(msg_bytes)?;
-  trace!(
-    "Sent message to {}\n{:?}",
-    stream.peer_addr().unwrap().ip(),
-    msg
-  );
   Ok(())
 }
 /// Receives a message (any serializable type) from the given stream.
@@ -115,11 +102,6 @@ pub fn receive_message_from_stream<Msg: DeserializeOwned + std::fmt::Debug>(
   stream.read_exact(&mut msg_bytes)?;
   let msg_string = String::from_utf8(msg_bytes).expect("message not valid UTF-8");
   let msg = ron::from_str(&msg_string).expect("deserialization failed");
-  trace!(
-    "Received message from {}\n{:?}",
-    stream.peer_addr().unwrap().ip(),
-    msg
-  );
   Ok(msg)
 }
 

@@ -2,7 +2,7 @@ pub mod board;
 pub mod game;
 pub mod message;
 
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 use board::{pos::Pos, GenericBoard, TrivialBoard};
 use rand::prelude::*;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_IP: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
 pub const DEFAULT_PORT: u16 = 42069;
+pub const DEFAULT_SOCKET_ADDR: SocketAddrV4 = SocketAddrV4::new(DEFAULT_IP, DEFAULT_PORT);
 
 pub const NPLAYERS: u8 = 2;
 pub const PLAYERS: [PlayerSymbol; NPLAYERS as usize] = [PlayerSymbol::X, PlayerSymbol::O];

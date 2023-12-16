@@ -1,10 +1,20 @@
+mod util;
+
 use common::{
   game::{RoundOutcome, RoundState},
   message::{receive_message_from_stream, send_message_to_stream, ClientMessage, ServerMessage},
-  PlayerSymbol, DEFAULT_IP, DEFAULT_PORT, PLAYERS,
+  PlayerSymbol, DEFAULT_SOCKET_ADDR, PLAYERS,
 };
 
-use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
+use std::{
+  io,
+  net::{SocketAddrV4, TcpListener, TcpStream},
+};
+
+fn main() {
+  let mut server = Server::connect();
+  server.play_game()
+}
 
 pub struct Server {
   /// sorted according to `Player`
@@ -12,56 +22,16 @@ pub struct Server {
 }
 
 impl Server {
-  pub fn connect() -> eyre::Result<Self> {
-    let ip_addr = loop {
-      println!(
-        "Enter IP address (press enter for default = {}):",
-        DEFAULT_IP
-      );
-      let mut ip_addr = String::new();
-      if !cfg!(feature = "auto_connect") {
-        std::io::stdin().read_line(&mut ip_addr)?;
+  pub fn connect() -> Self {
+    let socket_addr = match cfg!(feature = "auto_connect") {
+      false => {
+        let ip_addr = util::read_ip();
+        let port = util::read_port();
+        SocketAddrV4::new(ip_addr, port)
       }
-      let ip_addr = ip_addr.trim();
-
-      match ip_addr.is_empty() {
-        true => {
-          println!("Using default ip address {}", DEFAULT_IP);
-          break DEFAULT_IP;
-        }
-        false => match ip_addr.parse::<Ipv4Addr>() {
-          Ok(ip_addr) => break ip_addr,
-          Err(e) => {
-            println!("Parsing ip address failed: {}", e);
-            continue;
-          }
-        },
-      }
+      true => DEFAULT_SOCKET_ADDR,
     };
-    let port = loop {
-      println!("Enter port (press enter for default = {}):", DEFAULT_PORT);
-      let mut port = String::new();
-      if !cfg!(feature = "auto_connect") {
-        std::io::stdin().read_line(&mut port)?;
-      }
-      let port = port.trim();
-
-      match port.is_empty() {
-        true => {
-          println!("Using default port {}", DEFAULT_PORT);
-          break DEFAULT_PORT;
-        }
-        false => match port.parse::<u16>() {
-          Ok(port) => break port,
-          Err(e) => {
-            println!("Parsing port failed: {}", e);
-            continue;
-          }
-        },
-      }
-    };
-    let socket_addr = SocketAddrV4::new(ip_addr, port);
-    let listener = TcpListener::bind(socket_addr)?;
+    let listener = TcpListener::bind(socket_addr).expect("Failed to bind TcpListener.");
 
     let mut curr_player: PlayerSymbol = rand::random();
 
@@ -72,6 +42,7 @@ impl Server {
         Ok(s) => Some(s),
         Err(e) => {
           println!("Connecting to TcpStream failed: {}", e);
+          println!("Continuing to listen for connections...");
           None
         }
       })
@@ -79,7 +50,7 @@ impl Server {
       .enumerate()
       .map(|(i, mut stream)| {
         send_message_to_stream(&ServerMessage::SymbolAssignment(curr_player), &mut stream)
-          .expect("sending message failed");
+          .expect("Sending message failed.");
         println!("Player{} connected {}", i, stream.peer_addr().unwrap());
 
         let r = (curr_player, stream);
@@ -96,7 +67,7 @@ impl Server {
       .try_into()
       .unwrap();
 
-    Ok(Self { streams })
+    Self { streams }
   }
 
   pub fn play_game(&mut self) {
@@ -117,9 +88,7 @@ impl Server {
       }
     }
   }
-}
 
-impl Server {
   fn play_round(&mut self) -> RoundOutcome {
     println!("New round started.");
     let starting_player: PlayerSymbol = rand::random();
@@ -134,33 +103,28 @@ impl Server {
       if let Some(outcome) = round_state.outcome() {
         return outcome;
       }
-      let tile_global_pos = match self.receive_message(round_state.current_player()).unwrap() {
-        ClientMessage::PlaceSymbolProposal(p) => p,
+
+      match self.receive_message(round_state.current_player()).unwrap() {
+        ClientMessage::PlaceSymbol(chosen_tile) => {
+          self
+            .send_message(
+              &ServerMessage::OpponentPlaceSymbol(chosen_tile),
+              round_state.current_player().other(),
+            )
+            .unwrap();
+          round_state.try_play_move(chosen_tile).unwrap();
+        }
         ClientMessage::GiveUp => {
           self
             .send_message(
-              &ServerMessage::OtherGiveUp,
+              &ServerMessage::OpponentGiveUp,
               round_state.current_player().other(),
             )
             .unwrap();
           return RoundOutcome::Win(round_state.current_player().other());
         }
-        e => panic!("expected `PlaceSymbolProposal` or `GiveUp`, got `{:?}`", e),
+        e => panic!("unexpected meessage: `{:?}`", e),
       };
-
-      match round_state.try_play_move(tile_global_pos) {
-        Ok(()) => {
-          self
-            .broadcast_message(&ServerMessage::PlaceSymbolAccepted(tile_global_pos))
-            .unwrap();
-        }
-        Err(e) => {
-          self
-            .broadcast_message(&ServerMessage::PlaceSymbolRejected)
-            .unwrap();
-          panic!("{:?}", e);
-        }
-      }
     }
   }
 
@@ -168,28 +132,16 @@ impl Server {
     &mut self.streams[player.idx()]
   }
 
-  fn send_message(&mut self, message: &ServerMessage, player: PlayerSymbol) -> eyre::Result<()> {
-    send_message_to_stream(message, self.stream_mut(player))?;
-    Ok(())
+  fn receive_message(&mut self, player: PlayerSymbol) -> io::Result<ClientMessage> {
+    receive_message_from_stream(self.stream_mut(player))
   }
-
-  fn broadcast_message(&mut self, message: &ServerMessage) -> eyre::Result<()> {
+  fn send_message(&mut self, message: &ServerMessage, player: PlayerSymbol) -> io::Result<()> {
+    send_message_to_stream(message, self.stream_mut(player))
+  }
+  fn broadcast_message(&mut self, message: &ServerMessage) -> io::Result<()> {
     for p in PLAYERS {
       self.send_message(message, p)?;
     }
     Ok(())
   }
-
-  fn receive_message(&mut self, player: PlayerSymbol) -> std::io::Result<ClientMessage> {
-    receive_message_from_stream(self.stream_mut(player))
-  }
-}
-
-fn main() {
-  tracing_subscriber::fmt()
-    .with_max_level(tracing::Level::INFO)
-    .init();
-
-  let mut server = Server::connect().unwrap();
-  server.play_game()
 }

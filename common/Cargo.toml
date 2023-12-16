@@ -5,11 +5,7 @@ authors = ["Luis Wirth <lwirth2000@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-rand = "0.8.5"
-
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 
-eyre = "0.6.11"
-color-eyre = "0.6.2"
-tracing = "0.1.40"
+rand = "0.8.5"
