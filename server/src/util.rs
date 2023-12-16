@@ -5,7 +5,7 @@ use common::{DEFAULT_IP, DEFAULT_PORT};
 pub fn read_ip() -> Ipv4Addr {
   loop {
     println!(
-      "Enter IP address (press enter for default = {}.):",
+      "Enter IP address (press enter for default = {}):",
       DEFAULT_IP
     );
     let mut ip_addr = String::new();

@@ -147,23 +147,21 @@ impl PlayingState {
     }
 
     if let Some(action) = action {
-      let succeded = match action {
-        PlayerAction::MakeMove(chosen_tile) => self.round.try_play_move(chosen_tile).is_ok(),
+      match action {
+        PlayerAction::MakeMove(chosen_tile) => self
+          .round
+          .try_play_move(self.round.current_player(), chosen_tile)
+          .unwrap(),
         PlayerAction::GiveUp => {
           self.outcome = Some(RoundOutcome::Win(self.round.current_player().other()));
-          true
         }
       };
 
       if my_turn {
-        if succeded {
-          self
-            .msg_handler
-            .try_write_msg(Some(ClientMsgAction(action)))
-            .unwrap();
-        }
-      } else {
-        assert!(succeded);
+        self
+          .msg_handler
+          .try_write_msg(Some(ClientMsgAction(action)))
+          .unwrap();
       }
     }
 

@@ -64,6 +64,22 @@ pub fn build_board_ui(
           let global_pos = GlobalPos::from((outer_pos, inner_pos));
           let tile = inner_board.tile(inner_pos);
 
+          let is_hovered = ui.ctx().input(|r| {
+            r.pointer
+              .hover_pos()
+              .map(|hover_pos| tile_rect.contains(hover_pos))
+              .unwrap_or(false)
+          });
+          let is_hovered_playable =
+            is_hovered && game_state.could_play_move(this_player, global_pos);
+
+          if response.clicked() && is_hovered_playable {
+            clicked_tile = Some(GlobalPos::from((
+              OuterPos::new(xouter, youter),
+              InnerPos::new(xinner, yinner),
+            )));
+          }
+
           let default_tile_color = Color32::DARK_GRAY;
           let marked_tile_color = lightened_color(current_player_color, 100);
 
@@ -75,30 +91,14 @@ pub fn build_board_ui(
             _ => default_tile_color,
           };
 
-          if game_state.current_player() == this_player {
-            ui.ctx().input(|r| {
-              if let Some(hover_pos) = r.pointer.hover_pos() {
-                if tile_rect.contains(hover_pos) && game_state.could_play_move(global_pos) {
-                  tile_color = lightened_color(tile_color, 100);
-                }
-              }
-            });
+          if is_hovered_playable {
+            tile_color = lightened_color(tile_color, 100);
           }
+
           painter.rect_filled(tile_rect, 0.0, tile_color);
 
           if let TrivialTile::Won(p) = tile {
             draw_symbol(&painter, tile_rect, *p);
-          }
-
-          if response.clicked() {
-            if let Some(hover_pos) = ui.ctx().input(|r| r.pointer.hover_pos()) {
-              if tile_rect.contains(hover_pos) {
-                clicked_tile = Some(GlobalPos::from((
-                  OuterPos::new(xouter, youter),
-                  InnerPos::new(xinner, yinner),
-                )));
-              }
-            }
           }
         }
       }

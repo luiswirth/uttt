@@ -115,7 +115,9 @@ impl Server {
         .unwrap();
 
       match action {
-        PlayerAction::MakeMove(chosen_tile) => round_state.try_play_move(chosen_tile).unwrap(),
+        PlayerAction::MakeMove(chosen_tile) => round_state
+          .try_play_move(round_state.current_player(), chosen_tile)
+          .unwrap(),
         PlayerAction::GiveUp => return RoundOutcome::Win(round_state.current_player().other()),
       };
     }

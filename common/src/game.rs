@@ -22,16 +22,16 @@ impl RoundState {
     }
   }
 
-  pub fn could_play_move(&self, global_pos: GlobalPos) -> bool {
-    self
-      .curr_outer_pos
-      .map(|curr_outer_pos| curr_outer_pos == OuterPos::from(global_pos))
-      .unwrap_or(true)
-      && self.outer_board.could_place_symbol(global_pos)
+  pub fn could_play_move(&self, player: PlayerSymbol, global_pos: GlobalPos) -> bool {
+    self.could_place_symbol(player, global_pos)
   }
 
-  pub fn try_play_move(&mut self, chosen_tile: GlobalPos) -> Result<(), MoveError> {
-    self.try_place_symbol(chosen_tile)?;
+  pub fn try_play_move(
+    &mut self,
+    player: PlayerSymbol,
+    chosen_tile: GlobalPos,
+  ) -> Result<(), MoveError> {
+    self.try_place_symbol(player, chosen_tile)?;
     self.update_outer_pos(chosen_tile);
     self.curr_player.switch();
     Ok(())
@@ -59,13 +59,31 @@ impl RoundState {
 
 // private methods
 impl RoundState {
-  fn try_place_symbol(&mut self, global_pos: GlobalPos) -> Result<(), MoveError> {
-    self
-      .curr_outer_pos
-      .map(|curr_outer_pos| curr_outer_pos == OuterPos::from(global_pos))
-      .unwrap_or(true)
+  fn could_place_symbol(&self, player: PlayerSymbol, global_pos: GlobalPos) -> bool {
+    self.curr_player == player
+      && self
+        .curr_outer_pos
+        .map(|curr_outer_pos| curr_outer_pos == OuterPos::from(global_pos))
+        .unwrap_or(true)
+      && self.outer_board.could_place_symbol(global_pos)
+  }
+
+  fn try_place_symbol(
+    &mut self,
+    player: PlayerSymbol,
+    global_pos: GlobalPos,
+  ) -> Result<(), MoveError> {
+    (self.curr_player == player)
       .then_some(())
-      .ok_or(MoveError::WrongOuterPos)
+      .ok_or(MoveError::WrongPlayer)
+      .and(
+        self
+          .curr_outer_pos
+          .map(|curr_outer_pos| curr_outer_pos == OuterPos::from(global_pos))
+          .unwrap_or(true)
+          .then_some(())
+          .ok_or(MoveError::WrongOuterPos),
+      )
       .and(
         self
           .outer_board
@@ -131,4 +149,5 @@ impl Stats {
 pub enum MoveError {
   PlaceSymbol(PlaceSymbolError),
   WrongOuterPos,
+  WrongPlayer,
 }
