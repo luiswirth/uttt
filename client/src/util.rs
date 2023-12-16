@@ -1,3 +1,6 @@
+pub mod board_ui;
+pub mod stats_ui;
+
 use common::{game::RoundState, GlobalPos, InnerPos, OuterPos, PlayerSymbol};
 
 use eframe::egui;
