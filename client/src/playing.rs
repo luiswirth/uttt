@@ -30,12 +30,14 @@ impl PlayingState {
   pub fn new(
     msg_handler: MessageIoHandlerNoBlocking,
     this_player: PlayerSymbol,
-    round: RoundState,
+    stats: Stats,
+    starting_player: PlayerSymbol,
   ) -> Self {
+    let round = RoundState::new(starting_player);
     Self {
       msg_handler,
       this_player,
-      stats: Stats::default(),
+      stats,
       round,
       outcome: None,
     }
@@ -45,6 +47,9 @@ impl PlayingState {
     self.msg_handler.try_write_msg::<()>(None).unwrap();
 
     let mut should_restart_game = false;
+    let mut give_up = false;
+    let mut chosen_tile = None;
+
     egui::SidePanel::left("left-panel").show(ctx, |ui| {
       ui.vertical_centered(|ui| {
         ui.add_space(10.0);
@@ -94,22 +99,14 @@ impl PlayingState {
           board_ui::draw_symbol(&painter, rect, self.round.current_player());
 
           if self.round.current_player() == self.this_player && ui.button("Give up").clicked() {
-            self
-              .msg_handler
-              .try_write_msg(Some(MsgPlayerAction::GiveUp))
-              .unwrap();
-            let outcome = self
-              .outcome
-              .insert(RoundOutcome::Win(self.this_player.other()));
-            self.stats.update(*outcome);
+            give_up = true;
           }
         }
       })
     });
 
     egui::CentralPanel::default().show(ctx, |ui| {
-      let chosen_tile = build_board_ui(ui, &self.round, self.this_player);
-      Self::update_round(&mut self, chosen_tile);
+      chosen_tile = build_board_ui(ui, &self.round, self.this_player);
     });
 
     if should_restart_game {
@@ -117,25 +114,45 @@ impl PlayingState {
         .msg_handler
         .try_write_msg(Some(ClientReqRoundStart))
         .unwrap();
-      return Client::WaitingForGameStart(WaitingState::new(self.msg_handler, self.this_player));
+      return Client::WaitingForGameStart(WaitingState::new(
+        self.msg_handler,
+        self.this_player,
+        self.stats,
+      ));
     }
+
+    Self::update_round(&mut self, chosen_tile, give_up);
 
     Client::Playing(self)
   }
 
-  fn update_round(state: &mut Self, mut clicked_tile: Option<GlobalPos>) {
-    if state.outcome.is_some() {
+  fn update_round(&mut self, mut clicked_tile: Option<GlobalPos>, give_up: bool) {
+    if self.outcome.is_some() {
+      return;
+    }
+
+    if give_up {
+      let outcome = self
+        .outcome
+        .insert(RoundOutcome::Win(self.this_player.other()));
+      self.stats.update(*outcome);
+
+      self
+        .msg_handler
+        .try_write_msg(Some(MsgPlayerAction::GiveUp))
+        .unwrap();
+
       return;
     }
 
     if cfg!(feature = "auto_play") {
-      clicked_tile = Some(choose_random_tile(&state.round));
+      clicked_tile = Some(choose_random_tile(&self.round));
     }
 
-    if state.round.current_player() == state.this_player {
+    if self.round.current_player() == self.this_player {
       if let Some(chosen_tile) = clicked_tile {
-        if state.round.try_play_move(chosen_tile).is_ok() {
-          state
+        if self.round.try_play_move(chosen_tile).is_ok() {
+          self
             .msg_handler
             .try_write_msg(Some(MsgPlayerAction::MakeMove(chosen_tile)))
             .unwrap();
@@ -143,17 +160,17 @@ impl PlayingState {
       }
     } else {
       #[allow(clippy::collapsible_else_if)]
-      if let Some(action) = state.msg_handler.try_read_msg().unwrap() {
+      if let Some(action) = self.msg_handler.try_read_msg().unwrap() {
         match action {
-          MsgPlayerAction::MakeMove(global_pos) => state.round.try_play_move(global_pos).unwrap(),
-          MsgPlayerAction::GiveUp => state.outcome = Some(RoundOutcome::Win(state.this_player)),
+          MsgPlayerAction::MakeMove(global_pos) => self.round.try_play_move(global_pos).unwrap(),
+          MsgPlayerAction::GiveUp => self.outcome = Some(RoundOutcome::Win(self.this_player)),
         }
       }
     }
 
-    state.outcome = state.outcome.or(state.round.outcome());
-    if let Some(outcome) = state.outcome {
-      state.stats.update(outcome);
+    self.outcome = self.outcome.or(self.round.outcome());
+    if let Some(outcome) = self.outcome {
+      self.stats.update(outcome);
     };
   }
 }

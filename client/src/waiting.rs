@@ -1,7 +1,7 @@
 use crate::{playing::PlayingState, util::stats_ui::build_stats_ui, Client};
 
 use common::{
-  game::{RoundState, Stats},
+  game::Stats,
   msg::{MessageIoHandlerNoBlocking, ServerMsgRoundStart},
   PlayerSymbol,
 };
@@ -16,11 +16,15 @@ pub struct WaitingState {
 }
 
 impl WaitingState {
-  pub fn new(msg_handler: MessageIoHandlerNoBlocking, this_player: PlayerSymbol) -> Self {
+  pub fn new(
+    msg_handler: MessageIoHandlerNoBlocking,
+    this_player: PlayerSymbol,
+    stats: Stats,
+  ) -> Self {
     Self {
       msg_handler,
       this_player,
-      stats: Stats::default(),
+      stats,
     }
   }
 
@@ -35,11 +39,11 @@ impl WaitingState {
     });
 
     if let Some(ServerMsgRoundStart(starting_player)) = self.msg_handler.try_read_msg().unwrap() {
-      let round_state = RoundState::new(starting_player);
       return Client::Playing(PlayingState::new(
         self.msg_handler,
         self.this_player,
-        round_state,
+        self.stats,
+        starting_player,
       ));
     }
 

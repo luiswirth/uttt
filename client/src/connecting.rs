@@ -79,7 +79,11 @@ impl ConnectingState {
 
     if let Some(mut msg_handler) = self.msg_handler {
       if let Some(ServerMsgSymbolAssignment(symbol)) = msg_handler.try_read_msg().unwrap() {
-        return Client::WaitingForGameStart(WaitingState::new(msg_handler, symbol));
+        return Client::WaitingForGameStart(WaitingState::new(
+          msg_handler,
+          symbol,
+          Default::default(),
+        ));
       } else {
         self.msg_handler = Some(msg_handler);
       }
