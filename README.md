@@ -6,14 +6,20 @@ Build with rust, egui, wgpu, serde.
 
 ## Run
 
+### Use precompiled binaries
+
+Under github releases you can find precompiled binaries for various platforms.
+
+### Build it yourself
+
 Get rust compiler toolchain using [rustup](https://rustup.rs/).
 
-Start server.
+Compile and run server.
 ```sh
 cargo r --release -p uttt-server
 ```
 
-Start client.
+Compile and run client.
 ```sh
 cargo r --release -p uttt-client
 ```
