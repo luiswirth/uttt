@@ -27,7 +27,7 @@ pub fn choose_random_tile(game_state: &RoundState) -> GlobalPos {
     let outer_pos = OuterPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
     if game_state
       .board()
-      .tile(outer_pos)
+      .tile_state(outer_pos)
       .board_state()
       .is_placeable()
     {
@@ -36,7 +36,12 @@ pub fn choose_random_tile(game_state: &RoundState) -> GlobalPos {
   });
   let inner_pos = loop {
     let inner_pos = InnerPos::new(rng.gen_range(0..3), rng.gen_range(0..3));
-    if game_state.board().tile(outer_pos).tile(inner_pos).is_free() {
+    if game_state
+      .board()
+      .tile_state(outer_pos)
+      .tile_state(inner_pos)
+      .is_free()
+    {
       break inner_pos;
     }
   };

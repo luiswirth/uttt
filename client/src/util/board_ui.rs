@@ -1,5 +1,5 @@
 use common::{
-  board::{TileBoardState, TrivialTile},
+  board::{tile::TrivialTileState, TileBoardState},
   game::RoundState,
   GlobalPos, InnerPos, OuterPos, PlayerSymbol,
 };
@@ -38,7 +38,7 @@ pub fn build_board_ui(
     );
   }
 
-  let mut clicked_tile = None;
+  let mut chosen_tile = None;
   for youter in 0..3 {
     for xouter in 0..3 {
       let inner_rect = Rect::from_min_size(
@@ -49,7 +49,7 @@ pub fn build_board_ui(
         Vec2::splat(inner_board_size),
       );
       let outer_pos = OuterPos::new(xouter, youter);
-      let inner_board = game_state.board().tile(outer_pos);
+      let inner_board = game_state.board().tile_state(outer_pos);
 
       for yinner in 0..3 {
         for xinner in 0..3 {
@@ -62,7 +62,7 @@ pub fn build_board_ui(
           );
           let inner_pos = InnerPos::new(xinner, yinner);
           let global_pos = GlobalPos::from((outer_pos, inner_pos));
-          let tile = inner_board.tile(inner_pos);
+          let tile = inner_board.tile_state(inner_pos);
 
           let is_hovered = ui.ctx().input(|r| {
             r.pointer
@@ -74,7 +74,7 @@ pub fn build_board_ui(
             is_hovered && game_state.could_play_move(this_player, global_pos);
 
           if response.clicked() && is_hovered_playable {
-            clicked_tile = Some(GlobalPos::from((
+            chosen_tile = Some(GlobalPos::from((
               OuterPos::new(xouter, youter),
               InnerPos::new(xinner, yinner),
             )));
@@ -82,7 +82,6 @@ pub fn build_board_ui(
 
           let default_tile_color = Color32::DARK_GRAY;
           let marked_tile_color = lightened_color(current_player_color, 100);
-
           let mut tile_color = match game_state.current_outer_pos() {
             Some(curr_outer_pos) if curr_outer_pos == OuterPos::new(xouter, youter) => {
               marked_tile_color
@@ -90,14 +89,12 @@ pub fn build_board_ui(
             None => marked_tile_color,
             _ => default_tile_color,
           };
-
           if is_hovered_playable {
             tile_color = lightened_color(tile_color, 100);
           }
-
           painter.rect_filled(tile_rect, 0.0, tile_color);
 
-          if let TrivialTile::Won(p) = tile {
+          if let TrivialTileState::Won(p) = tile {
             draw_symbol(&painter, tile_rect, *p);
           }
         }
@@ -108,7 +105,7 @@ pub fn build_board_ui(
       }
     }
   }
-  clicked_tile
+  chosen_tile
 }
 
 pub fn draw_symbol(painter: &Painter, rect: Rect, symbol: PlayerSymbol) {

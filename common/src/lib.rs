@@ -4,7 +4,7 @@ pub mod msg;
 
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use board::{pos::Pos, GenericBoard, TrivialBoard};
+use board::{tile::TilePos, GenericBoard, TrivialBoard};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -80,7 +80,7 @@ impl GlobalPos {
 }
 
 impl IntoIterator for GlobalPos {
-  type Item = Pos;
+  type Item = TilePos;
   type IntoIter = GlobalPosIter;
   fn into_iter(self) -> Self::IntoIter {
     GlobalPosIter { global: self, i: 0 }
@@ -92,7 +92,7 @@ pub struct GlobalPosIter {
   i: u8,
 }
 impl Iterator for GlobalPosIter {
-  type Item = Pos;
+  type Item = TilePos;
   fn next(&mut self) -> Option<Self::Item> {
     match self.i {
       0 => {
@@ -138,7 +138,7 @@ impl OuterPos {
   }
 }
 
-impl From<OuterPos> for Pos {
+impl From<OuterPos> for TilePos {
   fn from(outer: OuterPos) -> Self {
     Self::new_arr(outer.0)
   }
@@ -161,7 +161,7 @@ impl InnerPos {
   }
 }
 
-impl From<InnerPos> for Pos {
+impl From<InnerPos> for TilePos {
   fn from(inner: InnerPos) -> Self {
     Self::new_arr(inner.0)
   }

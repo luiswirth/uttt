@@ -96,7 +96,7 @@ impl RoundState {
     let next_outer_pos = InnerPos::from(last_move_pos).as_outer();
     self.curr_outer_pos = self
       .outer_board
-      .tile(next_outer_pos)
+      .tile_state(next_outer_pos)
       .board_state()
       .is_placeable()
       .then_some(next_outer_pos);
